@@ -244,4 +244,171 @@ export class EtsyOpenApiProvider implements DataProvider {
       confidence: 90,
     };
   }
+
+  /**
+   * Fetches full listing details including images, tags, description, and shop info.
+   */
+  public async getListingDetails(
+    listingId: string | number,
+    customApiKey?: string
+  ): Promise<{
+    status: "configured" | "unconfigured" | "not_found" | "rate_limited" | "error";
+    listingId: string;
+    title: string;
+    description?: string;
+    price?: {
+      amount: number;
+      currencyCode: string;
+      formatted: string;
+    };
+    shopName?: string;
+    shopId?: number;
+    url: string;
+    images: Array<{
+      url: string;
+      fullUrl: string;
+      width?: number;
+      height?: number;
+    }>;
+    imageUrl?: string;
+    tags: string[];
+    materials: string[];
+    views?: number;
+    numFavorers?: number;
+    message?: string;
+  }> {
+    const effectiveKey = customApiKey?.trim() || this.apiKey;
+    const cleanId = String(listingId).trim();
+
+    if (!effectiveKey) {
+      return {
+        status: "unconfigured",
+        listingId: cleanId,
+        title: "",
+        url: `https://www.etsy.com/listing/${cleanId}`,
+        images: [],
+        tags: [],
+        materials: [],
+        message: "Etsy API key not configured.",
+      };
+    }
+
+    try {
+      const headerKey = this.sharedSecret ? `${effectiveKey}:${this.sharedSecret}` : effectiveKey;
+      const url = `${this.baseUrl}/application/listings/${cleanId}?includes=Images,Shop`;
+
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+      const res = await fetch(url, {
+        headers: {
+          "x-api-key": headerKey,
+          Accept: "application/json",
+        },
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+
+      if (res.status === 404) {
+        return {
+          status: "not_found",
+          listingId: cleanId,
+          title: "",
+          url: `https://www.etsy.com/listing/${cleanId}`,
+          images: [],
+          tags: [],
+          materials: [],
+          message: `Listing #${cleanId} was not found on Etsy.`,
+        };
+      }
+
+      if (res.status === 429) {
+        return {
+          status: "rate_limited",
+          listingId: cleanId,
+          title: "",
+          url: `https://www.etsy.com/listing/${cleanId}`,
+          images: [],
+          tags: [],
+          materials: [],
+          message: "Etsy API rate limit reached. Please wait a moment before trying again.",
+        };
+      }
+
+      if (!res.ok) {
+        return {
+          status: "error",
+          listingId: cleanId,
+          title: "",
+          url: `https://www.etsy.com/listing/${cleanId}`,
+          images: [],
+          tags: [],
+          materials: [],
+          message: `Etsy API returned status ${res.status}.`,
+        };
+      }
+
+      const item = await res.json();
+
+      let priceAmount = 0;
+      let currencyCode = "USD";
+      if (item.price) {
+        if (typeof item.price.amount === "number") {
+          priceAmount = item.price.amount / (item.price.divisor || 100);
+          currencyCode = item.price.currency_code || "USD";
+        } else if (typeof item.price === "number") {
+          priceAmount = item.price;
+        }
+      }
+
+      const images: Array<{ url: string; fullUrl: string; width?: number; height?: number }> = [];
+      if (Array.isArray(item.Images)) {
+        for (const img of item.Images) {
+          const full = img.url_fullxfull || img.url_570xN || img.url_170x135;
+          const preview = img.url_570xN || img.url_fullxfull || img.url_170x135;
+          if (full) {
+            images.push({
+              url: preview,
+              fullUrl: full,
+              width: img.full_width,
+              height: img.full_height,
+            });
+          }
+        }
+      }
+
+      return {
+        status: "configured",
+        listingId: cleanId,
+        title: item.title || "",
+        description: item.description || "",
+        price: {
+          amount: Math.round(priceAmount * 100) / 100,
+          currencyCode,
+          formatted: priceAmount > 0 ? priceAmount.toFixed(2) : "",
+        },
+        shopName: item.Shop?.shop_name,
+        shopId: item.shop_id || item.Shop?.shop_id,
+        url: item.url || `https://www.etsy.com/listing/${cleanId}`,
+        images,
+        imageUrl: images[0]?.fullUrl || images[0]?.url,
+        tags: Array.isArray(item.tags) ? item.tags : [],
+        materials: Array.isArray(item.materials) ? item.materials : [],
+        views: item.views,
+        numFavorers: item.num_favorers,
+      };
+    } catch (err: any) {
+      return {
+        status: "error",
+        listingId: cleanId,
+        title: "",
+        url: `https://www.etsy.com/listing/${cleanId}`,
+        images: [],
+        tags: [],
+        materials: [],
+        message: err.message || "Failed to fetch listing details.",
+      };
+    }
+  }
 }

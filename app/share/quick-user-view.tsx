@@ -27,6 +27,8 @@ import {
   HelpCircle,
   RefreshCw,
   AlertTriangle,
+  Sparkles,
+  Plus,
 } from "lucide-react";
 import { AccessGate, lockApp } from "@/components/access-gate";
 import {
@@ -39,6 +41,10 @@ import { PricingCalculator } from "@/components/pricing-calculator";
 import { ProductFactsDrawer } from "@/components/product-facts-drawer";
 import { DataDetailsDrawer } from "@/components/data-details-drawer";
 import { Header, NavItem } from "@/components/header";
+import {
+  ListingDownloaderModal,
+  ListingDownloaderData,
+} from "@/components/listing-downloader-modal";
 import { ProductFacts } from "@/lib/product-facts/types";
 
 // Clean example presets
@@ -82,6 +88,12 @@ export function QuickUserView() {
   const [showManualUrls, setShowManualUrls] = useState(false);
   const [manualUrls, setManualUrls] = useState(["", "", ""]);
   const [manualPrices, setManualPrices] = useState(["", "", ""]);
+  const [manualListings, setManualListings] = useState<(ListingDownloaderData | null)[]>([null, null, null]);
+  const [fetchingUrlIndex, setFetchingUrlIndex] = useState<number | null>(null);
+
+  // Listing Downloader State
+  const [isDownloaderOpen, setIsDownloaderOpen] = useState(false);
+  const [downloaderInitialData, setDownloaderInitialData] = useState<ListingDownloaderData | null>(null);
 
   // Product Facts State (Starts clean and unpolluted; no hardcoded state)
   const [productFacts, setProductFacts] = useState<Partial<ProductFacts>>({});
@@ -148,6 +160,8 @@ export function QuickUserView() {
     setShowManualUrls(false);
     setManualUrls(["", "", ""]);
     setManualPrices(["", "", ""]);
+    setManualListings([null, null, null]);
+    setFetchingUrlIndex(null);
     setEditedTitle("");
     setEditedTags([]);
     setEditedDescription("");
@@ -156,6 +170,76 @@ export function QuickUserView() {
     setSessionAnalysisId(null);
     setIsFactsDrawerOpen(false);
     setIsDataDetailsOpen(false);
+    setIsDownloaderOpen(false);
+    setDownloaderInitialData(null);
+  };
+
+  // Open Downloader Modal for any listing
+  const handleOpenDownloader = (data?: ListingDownloaderData | null) => {
+    setDownloaderInitialData(data || null);
+    setIsDownloaderOpen(true);
+  };
+
+  // Automatically fetch listing images, tags, price, and details when URL is entered
+  const handleAutoFetchCompetitorUrl = async (idx: number, rawUrl: string) => {
+    const cleanUrl = rawUrl.trim();
+    if (!cleanUrl || (!cleanUrl.includes("etsy.com/listing/") && !/^\d{8,12}$/.test(cleanUrl))) {
+      return;
+    }
+
+    setFetchingUrlIndex(idx);
+    try {
+      let userApiKey = "";
+      try {
+        userApiKey = localStorage.getItem("etsy_user_api_key") || "";
+      } catch {}
+
+      const res = await fetch("/api/fetch-listing-details", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          ...(userApiKey ? { "x-etsy-api-key": userApiKey } : {}),
+        },
+        body: JSON.stringify({ url: cleanUrl }),
+      });
+
+      const data = await res.json();
+      if (data.success && data.listing) {
+        const fetched: ListingDownloaderData = {
+          listingId: data.listing.listingId,
+          title: data.listing.title,
+          description: data.listing.description,
+          price: data.listing.price,
+          currency: data.listing.currency,
+          shopName: data.listing.shopName,
+          url: data.listing.url,
+          images: data.listing.images,
+          imageUrl: data.listing.imageUrl,
+          tags: data.listing.tags,
+          materials: data.listing.materials,
+          source: data.listing.source,
+        };
+
+        setManualListings((prev) => {
+          const copy = [...prev];
+          copy[idx] = fetched;
+          return copy;
+        });
+
+        // Auto-fill price if available and manual input is empty
+        if (data.listing.price && !manualPrices[idx]) {
+          setManualPrices((prev) => {
+            const copy = [...prev];
+            copy[idx] = data.listing.price;
+            return copy;
+          });
+        }
+      }
+    } catch {
+      // Graceful fallback
+    } finally {
+      setFetchingUrlIndex((curr) => (curr === idx ? null : curr));
+    }
   };
 
   // Map activeTab to header NavItem
@@ -228,6 +312,31 @@ export function QuickUserView() {
         }
       }
 
+      // Convert manual listings into structured competitors with full images and metadata
+      const manualCompetitorListings: any[] = [];
+      manualUrls.forEach((u, idx) => {
+        if (u.trim().length > 0) {
+          const l = manualListings[idx];
+          manualCompetitorListings.push({
+            listingId: l?.listingId,
+            title: l?.title || `Competitor Listing #${idx + 1}`,
+            url: u.trim(),
+            price: manualPrices[idx] || l?.price || "0.00",
+            currency: l?.currency || "USD",
+            shopName: l?.shopName || `Shop #${idx + 1}`,
+            imageUrl: l?.imageUrl,
+            images: l?.images,
+            tags: l?.tags || [],
+            description: l?.description,
+          });
+        }
+      });
+
+      const combinedCompetitorListings = [
+        ...fetchedCompetitorListings,
+        ...manualCompetitorListings,
+      ];
+
       // Call quick-optimize engine with strict provenance and session isolation
       const res = await fetch("/api/quick-optimize", {
         method: "POST",
@@ -236,7 +345,7 @@ export function QuickUserView() {
           mode: appMode,
           queryOrUrl: cleanQuery,
           productFacts: appMode === "optimize" ? productFacts : undefined,
-          competitorListings: fetchedCompetitorListings.length > 0 ? fetchedCompetitorListings : undefined,
+          competitorListings: combinedCompetitorListings.length > 0 ? combinedCompetitorListings : undefined,
           competitorUrls: validManualUrls.length > 0 ? validManualUrls : undefined,
           manualPrices: manualPrices.filter(Boolean),
         }),
@@ -414,6 +523,7 @@ export function QuickUserView() {
           onOpenHistory={() => setIsHistoryOpen(true)}
           savedCount={savedCount}
           onOpenFacts={() => setIsFactsDrawerOpen(true)}
+          onOpenDownloader={() => handleOpenDownloader(null)}
         />
 
         {/* Main Body */}
@@ -465,9 +575,19 @@ export function QuickUserView() {
                 <form onSubmit={handleAnalyze} className="space-y-4">
                   {/* Primary Product Query */}
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
-                      Target Search Keyword or Product Niche
-                    </label>
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
+                        Target Search Keyword or Product Niche
+                      </label>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDownloader(null)}
+                        className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1 cursor-pointer transition"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Listing Downloader</span>
+                      </button>
+                    </div>
                     <div className="relative">
                       <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
                       <input
@@ -481,6 +601,24 @@ export function QuickUserView() {
                       />
                     </div>
                   </div>
+
+                  {/* Etsy URL Detected Banner */}
+                  {searchQuery.includes("etsy.com/listing/") && (
+                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <span className="truncate">Etsy Listing Link detected in search.</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDownloader({ url: searchQuery })}
+                        className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Open in Downloader</span>
+                      </button>
+                    </div>
+                  )}
 
                   {/* Optional Competitor Benchmarking URLs (Progressive Disclosure) */}
                   <div className="pt-1">
@@ -496,38 +634,103 @@ export function QuickUserView() {
                     {showManualUrls && (
                       <div className="space-y-2.5 pt-3 mt-2 border-t border-slate-100">
                         <p className="text-[11px] text-slate-500">
-                          Paste up to 3 live Etsy listing URLs to directly compare keywords and pricing against:
+                          Paste up to 3 live Etsy listing URLs to automatically retrieve images, pricing, and tags:
                         </p>
-                        {[0, 1, 2].map((idx) => (
-                          <div key={idx} className="flex gap-2 items-center">
-                            <input
-                              type="url"
-                              value={manualUrls[idx]}
-                              onChange={(e) => {
-                                const copy = [...manualUrls];
-                                copy[idx] = e.target.value;
-                                setManualUrls(copy);
-                              }}
-                              placeholder={`Competitor #${idx + 1} Etsy URL (e.g. https://www.etsy.com/listing/...)`}
-                              className="flex-1 h-9 bg-white border border-slate-200 rounded-lg px-3 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 outline-none"
-                            />
-                            <div className="relative w-24">
-                              <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono">$</span>
-                              <input
-                                type="number"
-                                step="0.5"
-                                value={manualPrices[idx]}
-                                onChange={(e) => {
-                                  const copy = [...manualPrices];
-                                  copy[idx] = e.target.value;
-                                  setManualPrices(copy);
-                                }}
-                                placeholder="Price"
-                                className="w-full h-9 bg-white border border-slate-200 rounded-lg pl-6 pr-2 text-xs font-mono text-slate-900 focus:border-slate-900 outline-none"
-                              />
+                        {[0, 1, 2].map((idx) => {
+                          const listing = manualListings[idx];
+                          const isFetchingThis = fetchingUrlIndex === idx;
+
+                          return (
+                            <div key={idx} className="space-y-1.5">
+                              <div className="flex gap-2 items-center">
+                                <div className="relative flex-1">
+                                  <input
+                                    type="url"
+                                    value={manualUrls[idx]}
+                                    onChange={(e) => {
+                                      const val = e.target.value;
+                                      const copy = [...manualUrls];
+                                      copy[idx] = val;
+                                      setManualUrls(copy);
+                                      if (val.includes("etsy.com/listing/") || /^\d{8,12}$/.test(val.trim())) {
+                                        handleAutoFetchCompetitorUrl(idx, val);
+                                      }
+                                    }}
+                                    onBlur={() => {
+                                      if (manualUrls[idx] && !manualListings[idx]) {
+                                        handleAutoFetchCompetitorUrl(idx, manualUrls[idx]);
+                                      }
+                                    }}
+                                    placeholder={`Competitor #${idx + 1} Etsy URL (e.g. https://www.etsy.com/listing/...)`}
+                                    className="w-full h-9 bg-white border border-slate-200 rounded-lg pl-3 pr-8 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 outline-none transition"
+                                  />
+                                  {isFetchingThis && (
+                                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
+                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
+                                    </div>
+                                  )}
+                                </div>
+
+                                <div className="relative w-24 shrink-0">
+                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono">$</span>
+                                  <input
+                                    type="number"
+                                    step="0.5"
+                                    value={manualPrices[idx]}
+                                    onChange={(e) => {
+                                      const copy = [...manualPrices];
+                                      copy[idx] = e.target.value;
+                                      setManualPrices(copy);
+                                    }}
+                                    placeholder="Price"
+                                    className="w-full h-9 bg-white border border-slate-200 rounded-lg pl-6 pr-2 text-xs font-mono text-slate-900 focus:border-slate-900 outline-none"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Auto-fetched Preview Pill / Card */}
+                              {listing && (
+                                <div className="p-2 bg-slate-50 border border-slate-200/90 rounded-lg flex items-center justify-between gap-3 text-xs">
+                                  <div className="flex items-center gap-2.5 overflow-hidden">
+                                    <div className="w-8 h-8 rounded-md bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
+                                      {listing.imageUrl ? (
+                                        <img
+                                          src={listing.imageUrl}
+                                          alt={listing.title}
+                                          className="w-full h-full object-cover"
+                                        />
+                                      ) : (
+                                        <Store className="w-4 h-4 text-slate-400" />
+                                      )}
+                                    </div>
+                                    <div className="overflow-hidden">
+                                      <span className="font-semibold text-slate-900 truncate block text-[11px]">
+                                        {listing.title || `Listing #${idx + 1}`}
+                                      </span>
+                                      <span className="text-[10px] text-slate-500 flex items-center gap-1.5">
+                                        <span>{listing.shopName || "Etsy Shop"}</span>
+                                        {listing.price && <span className="font-mono text-emerald-700 font-semibold">${listing.price}</span>}
+                                        {listing.tags && listing.tags.length > 0 && <span>• {listing.tags.length} tags</span>}
+                                      </span>
+                                    </div>
+                                  </div>
+
+                                  <div className="flex items-center gap-1 shrink-0">
+                                    <button
+                                      type="button"
+                                      onClick={() => handleOpenDownloader(listing)}
+                                      className="h-6 px-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded text-[10px] font-semibold inline-flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                                      title="Download high-res photos and copy tags"
+                                    >
+                                      <Download className="w-3 h-3 text-emerald-600" />
+                                      <span>Downloader</span>
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -1136,14 +1339,24 @@ export function QuickUserView() {
                       </p>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setIsDataDetailsOpen(true)}
-                      className="text-xs font-semibold text-emerald-700 flex items-center gap-1 hover:underline cursor-pointer"
-                    >
-                      <Database className="w-3.5 h-3.5" />
-                      <span>Data sources</span>
-                    </button>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenDownloader(null)}
+                        className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Listing Downloader</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsDataDetailsOpen(true)}
+                        className="text-xs font-semibold text-emerald-700 flex items-center gap-1 hover:underline cursor-pointer"
+                      >
+                        <Database className="w-3.5 h-3.5" />
+                        <span>Data sources</span>
+                      </button>
+                    </div>
                   </div>
 
                   {/* If NO real competitors retrieved: show clean failure state */}
@@ -1187,24 +1400,50 @@ export function QuickUserView() {
                       {results.competitorsAnalyzed.map((comp: any, idx: number) => (
                         <div
                           key={idx}
-                          className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3"
+                          className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex flex-col justify-between space-y-3 hover:border-slate-300 transition shadow-2xs"
                         >
                           <div className="space-y-2">
-                            <div className="w-full h-36 bg-slate-200 rounded-lg overflow-hidden flex items-center justify-center relative">
+                            {/* Card Image with Downloader trigger */}
+                            <div
+                              className="group relative w-full h-36 bg-slate-200 rounded-lg overflow-hidden flex items-center justify-center cursor-pointer"
+                              onClick={() =>
+                                handleOpenDownloader({
+                                  listingId: comp.listingId,
+                                  title: comp.title,
+                                  price: comp.price,
+                                  currency: comp.currency,
+                                  shopName: comp.shopName,
+                                  url: comp.url,
+                                  imageUrl: comp.imageUrl,
+                                  images: comp.images,
+                                  tags: comp.tags,
+                                  description: comp.description,
+                                })
+                              }
+                            >
                               {comp.imageUrl ? (
                                 <img
                                   src={comp.imageUrl}
                                   alt={comp.title}
-                                  className="w-full h-full object-cover"
+                                  className="w-full h-full object-cover transition duration-200 group-hover:scale-105"
                                 />
                               ) : (
-                                <Store className="w-8 h-8 text-slate-400" />
+                                <div className="flex flex-col items-center justify-center p-2 text-center text-slate-400">
+                                  <Store className="w-6 h-6 mb-1" />
+                                  <span className="text-[10px] text-slate-500">Click to inspect / download</span>
+                                </div>
                               )}
                               {comp.price && (
                                 <span className="absolute bottom-2 right-2 bg-slate-900/90 text-white font-mono font-bold text-xs px-2 py-0.5 rounded">
                                   ${comp.price}
                                 </span>
                               )}
+                              <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <span className="px-2.5 py-1 bg-white/95 text-slate-900 rounded-md text-[11px] font-semibold flex items-center gap-1 shadow-sm">
+                                  <Download className="w-3 h-3 text-emerald-600" />
+                                  <span>Inspect & Download</span>
+                                </span>
+                              </div>
                             </div>
 
                             <div>
@@ -1218,17 +1457,42 @@ export function QuickUserView() {
                           </div>
 
                           <div className="pt-2 border-t border-slate-200 flex items-center justify-between text-xs">
-                            <span className="text-[11px] text-slate-400 font-mono">
-                              {comp.listingId ? `ID: ${comp.listingId}` : "Competitor"}
-                            </span>
+                            <div className="flex items-center gap-2">
+                              <span className="text-[11px] text-slate-400 font-mono">
+                                {comp.listingId ? `ID: ${comp.listingId}` : "Competitor"}
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  handleOpenDownloader({
+                                    listingId: comp.listingId,
+                                    title: comp.title,
+                                    price: comp.price,
+                                    currency: comp.currency,
+                                    shopName: comp.shopName,
+                                    url: comp.url,
+                                    imageUrl: comp.imageUrl,
+                                    images: comp.images,
+                                    tags: comp.tags,
+                                    description: comp.description,
+                                  })
+                                }
+                                className="text-[11px] text-emerald-700 hover:text-emerald-800 font-semibold inline-flex items-center gap-0.5 cursor-pointer"
+                                title="Open Listing Downloader"
+                              >
+                                <Download className="w-3 h-3" />
+                                <span>Download</span>
+                              </button>
+                            </div>
+
                             {comp.url && comp.url.startsWith("http") ? (
                               <a
                                 href={comp.url}
                                 target="_blank"
                                 rel="noreferrer"
-                                className="inline-flex items-center gap-1 text-emerald-700 font-semibold hover:underline"
+                                className="inline-flex items-center gap-1 text-slate-600 hover:text-slate-900 font-medium"
                               >
-                                <span>Open on Etsy</span>
+                                <span>Etsy</span>
                                 <ExternalLink className="w-3 h-3" />
                               </a>
                             ) : (
@@ -1594,6 +1858,29 @@ export function QuickUserView() {
             setEditedDescription(saved.description);
             setActiveTab("overview");
             setIsHistoryOpen(false);
+          }}
+        />
+
+        {/* Listing Downloader Modal */}
+        <ListingDownloaderModal
+          isOpen={isDownloaderOpen}
+          onClose={() => setIsDownloaderOpen(false)}
+          initialData={downloaderInitialData}
+          onUpdateListing={(updated) => {
+            setDownloaderInitialData(updated);
+            // Sync with manual competitor slots if matching
+            const matchedIdx = manualUrls.findIndex(
+              (u, i) =>
+                (updated.url && u && u.includes(updated.url)) ||
+                (updated.listingId && manualListings[i]?.listingId === updated.listingId)
+            );
+            if (matchedIdx !== -1) {
+              setManualListings((prev) => {
+                const copy = [...prev];
+                copy[matchedIdx] = updated;
+                return copy;
+              });
+            }
           }}
         />
       </div>

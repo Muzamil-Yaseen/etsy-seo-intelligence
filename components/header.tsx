@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import Image from "next/image";
@@ -14,6 +14,7 @@ import {
   FileText,
   DollarSign,
   MoreHorizontal,
+  Download,
 } from "lucide-react";
 
 export type NavItem = "research" | "keywords" | "competitors" | "listing" | "pricing";
@@ -25,6 +26,7 @@ interface HeaderProps {
   onOpenHistory: () => void;
   savedCount?: number;
   onOpenFacts?: () => void;
+  onOpenDownloader?: () => void;
 }
 
 export function Header({
@@ -34,6 +36,7 @@ export function Header({
   onOpenHistory,
   savedCount = 0,
   onOpenFacts,
+  onOpenDownloader,
 }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -202,6 +205,20 @@ export function Header({
               >
                 <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Product Facts</span>
+              </button>
+            )}
+
+            {/* Desktop Downloader Button */}
+            {onOpenDownloader && (
+              <button
+                type="button"
+                onClick={onOpenDownloader}
+                className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium text-white/70 hover:text-white hover:bg-white/[0.05] transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 cursor-pointer"
+                aria-label="Listing Downloader"
+                title="Download Etsy listing photos and metadata"
+              >
+                <Download className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Downloader</span>
               </button>
             )}
 
@@ -406,6 +423,20 @@ export function Header({
                 >
                   <ShieldCheck className="w-4 h-4 text-emerald-400" />
                   <span>Product Facts</span>
+                </button>
+              )}
+
+              {onOpenDownloader && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenDownloader();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full h-[50px] px-3.5 rounded-xl text-sm font-medium text-white/70 hover:text-white hover:bg-white/[0.04] flex items-center gap-3 transition-colors cursor-pointer"
+                >
+                  <Download className="w-4 h-4 text-emerald-400" />
+                  <span>Listing Downloader</span>
                 </button>
               )}
             </div>

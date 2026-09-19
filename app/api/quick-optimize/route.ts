@@ -63,7 +63,9 @@ const QuickOptimizeRequestSchema = z.object({
         currency: z.string().optional(),
         shopName: z.string().optional(),
         imageUrl: z.string().optional(),
+        images: z.any().optional(),
         tags: z.array(z.string()).optional(),
+        description: z.string().optional(),
       })
     )
     .optional(),
@@ -83,6 +85,8 @@ interface ParsedCompetitorItem {
   currency: string;
   shopName: string;
   imageUrl?: string;
+  images?: any[];
+  description?: string;
   tags: string[];
   tokens: string[];
   phrases: string[];
@@ -250,6 +254,8 @@ export async function POST(request: Request) {
             currency: item.currency || "USD",
             shopName: item.shopName || "Etsy Shop",
             imageUrl: item.imageUrl,
+            images: Array.isArray(item.images) ? item.images : item.imageUrl ? [item.imageUrl] : [],
+            description: item.description,
             tags: Array.isArray(item.tags) ? item.tags : [],
             tokens: titleWords,
             phrases,
@@ -266,8 +272,12 @@ export async function POST(request: Request) {
     if (data.url3 && isValidEtsyUrl(data.url3)) explicitManualUrls.push(data.url3.trim());
 
     explicitManualUrls.forEach((inputUrl, idx) => {
+      // Prevent duplicating if already added from competitorListings
+      if (competitors.some((c) => c.url === inputUrl)) return;
+
       const parsed = parseCompetitorUrl(inputUrl);
       if (parsed) {
+        if (parsed.listingId && competitors.some((c) => c.listingId === parsed.listingId)) return;
         const norm = normalizeKeyword(parsed.title).canonicalText;
         const words = norm.split(/\s+/).filter((w) => w.length > 1);
 
@@ -566,6 +576,8 @@ export async function POST(request: Request) {
         shopName: c.shopName,
         url: c.url,
         imageUrl: c.imageUrl,
+        images: c.images || (c.imageUrl ? [c.imageUrl] : []),
+        description: c.description || "",
         tags: c.tags,
       })),
       sharedCorePhrases: sortedSharedPhrases.slice(0, 10),
