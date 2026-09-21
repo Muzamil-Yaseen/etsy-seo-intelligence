@@ -138,32 +138,29 @@ export function Header({
             <button
               type="button"
               onClick={() => handleNavClick("research")}
-              className="flex items-center gap-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 rounded-lg py-1 transition-opacity hover:opacity-90 cursor-pointer"
+              className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 rounded-xl py-1 transition-opacity hover:opacity-90 cursor-pointer text-left"
               aria-label="Etsy Intelligence Home"
             >
-              {/* Desktop Full Logo */}
-              <div className="hidden sm:block relative w-[165px] h-[30px]">
-                <Image
-                  src="/logo-white-trimmed.png"
-                  alt="Etsy Intelligence"
-                  fill
-                  sizes="165px"
-                  className="object-contain object-left"
-                  priority
-                  unoptimized
-                />
-              </div>
-              {/* Mobile Icon Logo */}
-              <div className="block sm:hidden relative w-[32px] h-[32px]">
+              {/* New Brand Logo Icon */}
+              <div className="relative w-[32px] h-[32px] sm:w-[36px] sm:h-[36px] shrink-0">
                 <Image
                   src="/logo-icon.png"
                   alt="Etsy Intelligence"
                   fill
-                  sizes="32px"
-                  className="object-contain rounded-lg"
+                  sizes="(max-width: 640px) 32px, 36px"
+                  className="object-contain"
                   priority
                   unoptimized
                 />
+              </div>
+              {/* Brand Typography */}
+              <div className="flex flex-col">
+                <span className="text-[14px] sm:text-[16px] font-bold text-white tracking-tight leading-none">
+                  Etsy Intelligence
+                </span>
+                <span className="hidden sm:inline-block text-[10px] text-emerald-400 font-mono font-medium tracking-wider uppercase mt-1 leading-none">
+                  SEO &amp; Market Studio
+                </span>
               </div>
             </button>
           </div>
@@ -337,20 +334,25 @@ export function Header({
 
             {/* Sheet Header */}
             <div className="flex items-center justify-between px-2 pb-2 mb-1 border-b border-white/[0.08]">
-              <div className="flex items-center gap-2">
-                <div className="w-6 h-6 relative">
+              <div className="flex items-center gap-2.5">
+                <div className="w-7 h-7 relative shrink-0">
                   <Image
                     src="/logo-icon.png"
                     alt="Etsy Intelligence"
                     fill
-                    sizes="24px"
+                    sizes="28px"
                     className="object-contain rounded-md"
                     unoptimized
                   />
                 </div>
-                <span className="text-xs font-semibold tracking-tight text-white">
-                  Etsy Intelligence
-                </span>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold tracking-tight text-white leading-tight">
+                    Etsy Intelligence
+                  </span>
+                  <span className="text-[9px] text-emerald-400 font-mono leading-none mt-0.5">
+                    SEO &amp; Research Studio
+                  </span>
+                </div>
               </div>
               <button
                 type="button"
