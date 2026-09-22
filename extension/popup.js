@@ -34,12 +34,23 @@ document.addEventListener('DOMContentLoaded', () => {
 
   let activeData = null;
 
+  const DEFAULT_STUDIO_URL = 'https://etsy-seo-intelligence.vercel.app';
+
   chrome.storage.local.get(['studioUrl'], (res) => {
-    if (res.studioUrl) studioUrlInput.value = res.studioUrl;
+    if (res.studioUrl && !res.studioUrl.includes('localhost') && !res.studioUrl.includes('127.0.0.1')) {
+      studioUrlInput.value = res.studioUrl;
+    } else {
+      studioUrlInput.value = DEFAULT_STUDIO_URL;
+      chrome.storage.local.set({ studioUrl: DEFAULT_STUDIO_URL });
+    }
   });
 
   btnSaveUrl.onclick = () => {
-    const val = studioUrlInput.value.trim() || 'http://localhost:3001';
+    let val = studioUrlInput.value.trim() || DEFAULT_STUDIO_URL;
+    if (val.includes('localhost') || val.includes('127.0.0.1')) {
+      val = DEFAULT_STUDIO_URL;
+      studioUrlInput.value = DEFAULT_STUDIO_URL;
+    }
     chrome.storage.local.set({ studioUrl: val }, () => {
       btnSaveUrl.innerText = 'Saved!';
       setTimeout(() => { btnSaveUrl.innerText = 'Save'; }, 1500);

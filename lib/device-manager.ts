@@ -394,7 +394,7 @@ export function getConnectedAppsList(): ConnectedApp[] {
       status: "connected",
       version: "1.2.0",
       description: "Direct DOM extractor for HD photos, tags, videos & competitor queueing on etsy.com.",
-      lastUsed: "Active on localhost:3001 & production",
+      lastUsed: "Connected to https://etsy-seo-intelligence.vercel.app",
     },
     {
       id: "etsy_official_api",

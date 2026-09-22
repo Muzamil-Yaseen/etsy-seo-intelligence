@@ -38,10 +38,19 @@ chrome.storage.onChanged.addListener((changes, area) => {
   }
 });
 
+const PRODUCTION_STUDIO_URL = 'https://etsy-seo-intelligence.vercel.app';
+
+function getSanitizedStudioUrl(storedUrl) {
+  if (!storedUrl || typeof storedUrl !== 'string' || storedUrl.includes('localhost') || storedUrl.includes('127.0.0.1')) {
+    return PRODUCTION_STUDIO_URL;
+  }
+  return storedUrl.replace(/\/+$/, '');
+}
+
 chrome.runtime.onInstalled.addListener(() => {
   chrome.storage.local.get(['studioUrl', 'competitorQueue'], (res) => {
-    if (!res.studioUrl) {
-      chrome.storage.local.set({ studioUrl: 'http://localhost:3001' });
+    if (!res.studioUrl || res.studioUrl.includes('localhost') || res.studioUrl.includes('127.0.0.1')) {
+      chrome.storage.local.set({ studioUrl: PRODUCTION_STUDIO_URL });
     }
     if (!res.competitorQueue) {
       chrome.storage.local.set({ competitorQueue: [] });
@@ -53,7 +62,10 @@ chrome.runtime.onInstalled.addListener(() => {
 });
 
 chrome.runtime.onStartup.addListener(() => {
-  chrome.storage.local.get(['competitorQueue'], (res) => {
+  chrome.storage.local.get(['studioUrl', 'competitorQueue'], (res) => {
+    if (!res.studioUrl || res.studioUrl.includes('localhost') || res.studioUrl.includes('127.0.0.1')) {
+      chrome.storage.local.set({ studioUrl: PRODUCTION_STUDIO_URL });
+    }
     updateBadge((res.competitorQueue || []).length);
   });
 });
@@ -62,7 +74,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 1. Direct 1-listing Studio Open
   if (msg.action === 'open_in_studio') {
     chrome.storage.local.get(['studioUrl'], (res) => {
-      const baseUrl = (res.studioUrl || 'http://localhost:3001').replace(/\/+$/, '');
+      const baseUrl = getSanitizedStudioUrl(res.studioUrl);
       const fullUrl = baseUrl + '/#import=' + encodeURIComponent(JSON.stringify(msg.data));
       chrome.tabs.create({ url: fullUrl });
       sendResponse({ success: true, url: fullUrl });
@@ -73,7 +85,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 2. Direct Competitor Search Page Open
   if (msg.action === 'open_competitors_in_studio') {
     chrome.storage.local.get(['studioUrl'], (res) => {
-      const baseUrl = (res.studioUrl || 'http://localhost:3001').replace(/\/+$/, '');
+      const baseUrl = getSanitizedStudioUrl(res.studioUrl);
       const payload = {
         type: 'competitors',
         keyword: msg.keyword || '',
@@ -178,7 +190,7 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // 7. Analyze Saved Competitors in Studio
   if (msg.action === 'analyze_competitor_queue') {
     chrome.storage.local.get(['studioUrl', 'competitorQueue'], (res) => {
-      const baseUrl = (res.studioUrl || 'http://localhost:3001').replace(/\/+$/, '');
+      const baseUrl = getSanitizedStudioUrl(res.studioUrl);
       const queue = (msg.competitors && msg.competitors.length > 0)
         ? msg.competitors
         : (res.competitorQueue || []);
