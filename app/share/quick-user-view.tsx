@@ -1,6 +1,7 @@
 "use client";
 
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
+import Image from "next/image";
 import {
   Search,
   Tag,
@@ -45,6 +46,7 @@ import {
   ListingDownloaderModal,
   ListingDownloaderData,
 } from "@/components/listing-downloader-modal";
+import { DevicesAppsModal } from "@/components/devices-apps-modal";
 import { ProductFacts } from "@/lib/product-facts/types";
 
 // Clean example presets
@@ -104,12 +106,13 @@ export function QuickUserView() {
   const [isDataDetailsOpen, setIsDataDetailsOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
+  const [isDeviceManagerOpen, setIsDeviceManagerOpen] = useState(false);
 
   // Loading & Results
   const [isLoading, setIsLoading] = useState(false);
   const [results, setResults] = useState<any | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
-  const [apiNotice, setApiNotice] = useState<string | null>(null);
+  const [apiNotice, setApiNotice] = useState<{ type?: "info" | "warning" | "error" | string; message: string } | string | null>(null);
 
   // Editable Workspace State
   const [editedTitle, setEditedTitle] = useState("");
@@ -151,6 +154,45 @@ export function QuickUserView() {
     setTimeout(() => setCopiedKey(null), 2000);
   };
 
+  // Ref to hold handleAnalyze so hash/extension listeners can invoke it without circular dependencies
+  const handleAnalyzeRef = useRef<any>(null);
+
+  // 1-Click Copy complete listing package (Title, 13 Tags, Description, Care, FAQs)
+  const handleCopyCompletePackage = () => {
+    const titleText = editedTitle || results?.title?.text || "";
+    const tagsArr = (editedTags.length > 0 ? editedTags : (results?.tags?.list || [])).filter(Boolean);
+    const tagsText = tagsArr.join(", ");
+    const descText = editedDescription || results?.description?.fullDescription || "";
+    const careText = results?.description?.careInstructions || "";
+    const faqs = results?.faqs || [];
+    const faqsText = faqs.map((f: any) => `Q: ${f.question}\nA: ${f.answer}`).join("\n\n");
+
+    const packageText = [
+      "========================================",
+      "ETSY LISTING TITLE (Max 140 Chars)",
+      "========================================",
+      titleText,
+      "",
+      "========================================",
+      `13 ETSY TAGS (${tagsArr.length} Tags, <= 20 Chars Each)`,
+      "========================================",
+      tagsText,
+      "",
+      "========================================",
+      "LISTING DESCRIPTION",
+      "========================================",
+      descText,
+      careText ? `\n\n--- CARE INSTRUCTIONS ---\n${careText}` : "",
+      faqsText ? `\n\n--- BUYER FAQS ---\n${faqsText}` : "",
+      "",
+      "========================================",
+      "ETSY LISTING PACKAGE COMPILED BY ETSY INTELLIGENCE",
+      "========================================",
+    ].filter(Boolean).join("\n");
+
+    triggerCopy("complete-package", packageText);
+  };
+
   // Reset all state for clean isolated session
   const handleResetSession = () => {
     setResults(null);
@@ -178,6 +220,237 @@ export function QuickUserView() {
   const handleOpenDownloader = (data?: ListingDownloaderData | null) => {
     setDownloaderInitialData(data || null);
     setIsDownloaderOpen(true);
+  };
+
+  // Handle incoming 1-click Bookmarklet & Extension import via #import=...
+  useEffect(() => {
+    const handleCheckImport = () => {
+      if (typeof window === "undefined") return;
+      const hash = window.location.hash;
+      if (hash && hash.startsWith("#import=")) {
+        try {
+          const raw = decodeURIComponent(hash.replace("#import=", ""));
+          const data = JSON.parse(raw);
+
+          // Case 0: Analyze Competitors directly from Extension Queue
+          if (
+            data &&
+            (data.action === "analyze_competitors" ||
+              data.type === "analyze_competitors" ||
+              (data.action === "open_competitors_in_studio" && Array.isArray(data.competitors)))
+          ) {
+            const list: any[] = data.competitors || [];
+            if (list.length > 0) {
+              const comps = list.slice(0, 3);
+              const urls = comps.map((c: any) => c.url || (c.listingId ? `https://www.etsy.com/listing/${c.listingId}` : ""));
+              const prices = comps.map((c: any) => (c.price !== undefined && c.price !== null ? String(c.price) : ""));
+              const structuredListings: (ListingDownloaderData | null)[] = comps.map((c: any) => ({
+                listingId: c.listingId,
+                title: c.title,
+                price: c.price,
+                currency: c.currency || "USD",
+                shopName: c.shopName,
+                url: c.url || (c.listingId ? `https://www.etsy.com/listing/${c.listingId}` : ""),
+                imageUrl: c.imageUrl,
+                images: c.images || (c.imageUrl ? [c.imageUrl] : []),
+                tags: c.tags || [],
+                description: c.description || "",
+                source: "etsy_extension_competitors",
+              }));
+
+              while (structuredListings.length < 3) structuredListings.push(null);
+              while (urls.length < 3) urls.push("");
+              while (prices.length < 3) prices.push("");
+
+              let query = (data.keyword || "").trim();
+              if (!query && comps[0]) {
+                if (comps[0].tags && comps[0].tags.length > 0) {
+                  query = comps[0].tags[0];
+                } else if (comps[0].title) {
+                  query = comps[0].title.split(/[,|\-]/)[0].trim();
+                }
+              }
+
+              setSearchQuery(query);
+              setManualListings(structuredListings);
+              setManualUrls(urls);
+              setManualPrices(prices);
+              setShowManualUrls(true);
+
+              setApiNotice({
+                type: "info",
+                message: `✓ Ingested ${comps.length} saved competitor listing(s)! Analyzing competitor titles, tags, and pricing with Groq AI...`,
+              });
+
+              window.history.replaceState(null, "", window.location.pathname + window.location.search);
+
+              if (handleAnalyzeRef.current) {
+                handleAnalyzeRef.current(undefined, query, structuredListings, urls, prices);
+              }
+              return;
+            }
+          }
+
+          // Case 1: Bulk Competitors from Search or Shop Page
+          if (
+            data &&
+            (data.type === "competitors" ||
+              Array.isArray(data.competitors) ||
+              (Array.isArray(data) && data[0]?.source === "etsy_search_bulk"))
+          ) {
+            const list: any[] = data.competitors || (Array.isArray(data) ? data : []);
+            if (list.length > 0) {
+              if (data.keyword) {
+                setSearchQuery(data.keyword);
+              }
+              setShowManualUrls(true);
+
+              const urls = list.slice(0, 5).map((c: any) => c.url || `https://www.etsy.com/listing/${c.listingId}`);
+              const prices = list.slice(0, 5).map((c: any) => c.price || "");
+              const listings = list.slice(0, 5).map((c: any) => ({
+                listingId: c.listingId,
+                title: c.title,
+                price: c.price,
+                currency: c.currency || "USD",
+                shopName: c.shopName,
+                url: c.url,
+                imageUrl: c.imageUrl,
+                images: c.images || (c.imageUrl ? [c.imageUrl] : []),
+                tags: c.tags || [],
+                description: c.description || "",
+                source: "etsy_extension_bulk",
+              }));
+
+              setManualUrls(urls);
+              setManualPrices(prices);
+              setManualListings(listings);
+              setApiNotice({
+                type: "info",
+                message: `✓ Successfully loaded ${list.length} competitor listings from Etsy Extension! Click "Run Market Analysis" to analyze their SEO & pricing.`,
+              });
+
+              window.history.replaceState(null, "", window.location.pathname + window.location.search);
+              return;
+            }
+          }
+
+          // Case 2: Add As Competitor directly from Extension
+          if (data && (data.action === "add_competitor" || data.type === "add_competitor")) {
+            const competitorListing: ListingDownloaderData = {
+              listingId: data.listingId,
+              title: data.title,
+              price: data.price,
+              currency: data.currency || "USD",
+              shopName: data.shopName,
+              url: data.url || (data.listingId ? `https://www.etsy.com/listing/${data.listingId}` : ""),
+              imageUrl: data.imageUrl,
+              images: data.images || (data.imageUrl ? [data.imageUrl] : []),
+              tags: data.tags || [],
+              description: data.description || "",
+              source: "etsy_extension_single",
+            };
+
+            const result = handleToggleCompetitor(competitorListing);
+            setShowManualUrls(true);
+
+            if (result.action === "added") {
+              setApiNotice({
+                type: "info",
+                message: `✓ Added "${(data.title || "listing").slice(0, 32)}..." as Competitor #${(result.slot ?? 0) + 1} of 3! Click "Run Market Analysis" to analyze competitor patterns.`,
+              });
+            } else if (result.action === "removed") {
+              setApiNotice({
+                type: "info",
+                message: `Removed "${(data.title || "listing").slice(0, 32)}..." from Competitor Slot #${(result.slot ?? 0) + 1}.`,
+              });
+            } else {
+              setApiNotice({
+                type: "warning",
+                message: `All 3 competitor slots are filled! Clear a slot in the competitor benchmarking section below to add this listing.`,
+              });
+            }
+
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+            return;
+          }
+
+          // Case 3: Single Listing import
+          if (data && (data.listingId || data.title || data.url)) {
+            handleOpenDownloader(data);
+            window.history.replaceState(null, "", window.location.pathname + window.location.search);
+          }
+        } catch (e) {
+          console.error("Failed to parse bookmarklet/extension import data", e);
+        }
+      }
+    };
+
+    handleCheckImport();
+    window.addEventListener("hashchange", handleCheckImport);
+    return () => window.removeEventListener("hashchange", handleCheckImport);
+  }, []);
+
+  // Toggle or add a listing to the 3 competitor slots
+  const handleToggleCompetitor = (targetListing: ListingDownloaderData) => {
+    // 1. Check if already present in competitor slots
+    const existingIdx = manualListings.findIndex(
+      (item, i) =>
+        (item?.listingId && targetListing.listingId && String(item.listingId) === String(targetListing.listingId)) ||
+        (item?.url && targetListing.url && item.url === targetListing.url) ||
+        (manualUrls[i] && targetListing.url && manualUrls[i].includes(targetListing.url))
+    );
+
+    if (existingIdx !== -1) {
+      // Remove from competitors
+      setManualListings((prev) => {
+        const copy = [...prev];
+        copy[existingIdx] = null;
+        return copy;
+      });
+      setManualUrls((prev) => {
+        const copy = [...prev];
+        copy[existingIdx] = "";
+        return copy;
+      });
+      setManualPrices((prev) => {
+        const copy = [...prev];
+        copy[existingIdx] = "";
+        return copy;
+      });
+      return { success: true, action: "removed" as const, slot: existingIdx };
+    }
+
+    // 2. Find first empty slot (max 3)
+    const emptyIdx = manualListings.findIndex((item, i) => !item && !manualUrls[i]);
+    if (emptyIdx === -1) {
+      // All 3 slots are full
+      return { success: false, action: "full" as const };
+    }
+
+    // 3. Add to competitor slot
+    const targetUrl = targetListing.url || (targetListing.listingId ? `https://www.etsy.com/listing/${targetListing.listingId}` : "");
+    const targetPrice = targetListing.price || "";
+
+    setManualListings((prev) => {
+      const copy = [...prev];
+      copy[emptyIdx] = targetListing;
+      return copy;
+    });
+    setManualUrls((prev) => {
+      const copy = [...prev];
+      copy[emptyIdx] = targetUrl;
+      return copy;
+    });
+    if (targetPrice) {
+      setManualPrices((prev) => {
+        const copy = [...prev];
+        copy[emptyIdx] = targetPrice;
+        return copy;
+      });
+    }
+    setShowManualUrls(true);
+
+    return { success: true, action: "added" as const, slot: emptyIdx };
   };
 
   // Automatically fetch listing images, tags, price, and details when URL is entered
@@ -271,10 +544,20 @@ export function QuickUserView() {
   };
 
   // Run Market Analysis / Optimization with 1-click execution & clean session isolation
-  const handleAnalyze = async (e?: React.FormEvent, overrideQuery?: string) => {
+  const handleAnalyze = async (
+    e?: React.FormEvent,
+    overrideQuery?: string,
+    overrideManualListings?: (ListingDownloaderData | null)[],
+    overrideManualUrls?: string[],
+    overrideManualPrices?: string[]
+  ) => {
     if (e) e.preventDefault();
     const cleanQuery = (overrideQuery !== undefined ? overrideQuery : searchQuery).trim();
     if (!cleanQuery) return;
+
+    const currentListings = overrideManualListings !== undefined ? overrideManualListings : manualListings;
+    const currentUrls = overrideManualUrls !== undefined ? overrideManualUrls : manualUrls;
+    const currentPrices = overrideManualPrices !== undefined ? overrideManualPrices : manualPrices;
 
     setIsLoading(true);
     setErrorMsg("");
@@ -292,7 +575,7 @@ export function QuickUserView() {
 
     try {
       let fetchedCompetitorListings: any[] = [];
-      const validManualUrls = manualUrls.filter((u) => u.trim().length > 0);
+      const validManualUrls = currentUrls.filter((u) => u.trim().length > 0);
 
       // Attempt background competitor retrieval if no manual URLs were explicitly provided
       if (validManualUrls.length === 0) {
@@ -314,18 +597,20 @@ export function QuickUserView() {
 
       // Convert manual listings into structured competitors with full images and metadata
       const manualCompetitorListings: any[] = [];
-      manualUrls.forEach((u, idx) => {
+      currentUrls.forEach((u, idx) => {
         if (u.trim().length > 0) {
-          const l = manualListings[idx];
+          const l = currentListings[idx];
           manualCompetitorListings.push({
             listingId: l?.listingId,
             title: l?.title || `Competitor Listing #${idx + 1}`,
             url: u.trim(),
-            price: manualPrices[idx] || l?.price || "0.00",
+            price: currentPrices[idx] || l?.price || "0.00",
             currency: l?.currency || "USD",
             shopName: l?.shopName || `Shop #${idx + 1}`,
             imageUrl: l?.imageUrl,
             images: l?.images,
+            videos: l?.videos,
+            videoUrl: l?.videoUrl,
             tags: l?.tags || [],
             description: l?.description,
           });
@@ -337,6 +622,12 @@ export function QuickUserView() {
         ...manualCompetitorListings,
       ];
 
+      // Retrieve optional custom Groq API key from localStorage
+      let storedGroqKey = "";
+      try {
+        storedGroqKey = localStorage.getItem("groq_api_key") || "";
+      } catch {}
+
       // Call quick-optimize engine with strict provenance and session isolation
       const res = await fetch("/api/quick-optimize", {
         method: "POST",
@@ -347,7 +638,8 @@ export function QuickUserView() {
           productFacts: appMode === "optimize" ? productFacts : undefined,
           competitorListings: combinedCompetitorListings.length > 0 ? combinedCompetitorListings : undefined,
           competitorUrls: validManualUrls.length > 0 ? validManualUrls : undefined,
-          manualPrices: manualPrices.filter(Boolean),
+          manualPrices: currentPrices.filter(Boolean),
+          groqApiKey: storedGroqKey || undefined,
         }),
       });
 
@@ -368,6 +660,10 @@ export function QuickUserView() {
       setIsLoading(false);
     }
   };
+
+  useEffect(() => {
+    handleAnalyzeRef.current = handleAnalyze;
+  });
 
   // Apply Preset & Auto-Analyze for 1-click exploration
   const handleApplyPreset = (preset: typeof PRESETS[0]) => {
@@ -524,6 +820,7 @@ export function QuickUserView() {
           savedCount={savedCount}
           onOpenFacts={() => setIsFactsDrawerOpen(true)}
           onOpenDownloader={() => handleOpenDownloader(null)}
+          onOpenDeviceManager={() => setIsDeviceManagerOpen(true)}
         />
 
         {/* Main Body */}
@@ -558,7 +855,7 @@ export function QuickUserView() {
                   </button>
                 </div>
 
-                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
                   {appMode === "research"
                     ? "Etsy Market & Competitor Research"
                     : "Listing Optimization & Search Grounding"}
@@ -612,9 +909,9 @@ export function QuickUserView() {
                       <button
                         type="button"
                         onClick={() => handleOpenDownloader({ url: searchQuery })}
-                        className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                        className="px-3 py-1 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs border border-black"
                       >
-                        <Download className="w-3 h-3" />
+                        <Download className="w-3 h-3 text-white" />
                         <span>Open in Downloader</span>
                       </button>
                     </div>
@@ -719,10 +1016,10 @@ export function QuickUserView() {
                                     <button
                                       type="button"
                                       onClick={() => handleOpenDownloader(listing)}
-                                      className="h-6 px-2 bg-white border border-slate-200 hover:border-slate-300 text-slate-700 rounded text-[10px] font-semibold inline-flex items-center gap-1 transition shadow-2xs cursor-pointer"
+                                      className="h-6 px-2 bg-black hover:bg-zinc-800 text-white rounded text-[10px] font-semibold inline-flex items-center gap-1 transition shadow-2xs cursor-pointer border border-black"
                                       title="Download high-res photos and copy tags"
                                     >
-                                      <Download className="w-3 h-3 text-emerald-600" />
+                                      <Download className="w-3 h-3 text-white" />
                                       <span>Downloader</span>
                                     </button>
                                   </div>
@@ -736,9 +1033,21 @@ export function QuickUserView() {
                   </div>
 
                   {apiNotice && (
-                    <div className="p-3 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-800 flex items-start gap-2">
-                      <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      <span>{apiNotice}</span>
+                    <div
+                      className={`p-3 rounded-lg text-xs flex items-start gap-2 border ${
+                        (typeof apiNotice === "object" ? apiNotice.type : "") === "info"
+                          ? "bg-emerald-50 border-emerald-200 text-emerald-900"
+                          : (typeof apiNotice === "object" ? apiNotice.type : "") === "warning"
+                          ? "bg-amber-50 border-amber-200 text-amber-900"
+                          : "bg-slate-50 border-slate-200 text-slate-800"
+                      }`}
+                    >
+                      {(typeof apiNotice === "object" ? apiNotice.type : "") === "info" ? (
+                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
+                      ) : (
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                      )}
+                      <span>{typeof apiNotice === "object" ? apiNotice.message : apiNotice}</span>
                     </div>
                   )}
 
@@ -752,7 +1061,7 @@ export function QuickUserView() {
                   <button
                     type="submit"
                     disabled={isLoading || !searchQuery.trim()}
-                    className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm rounded-lg transition flex items-center justify-center gap-2 shadow-xs cursor-pointer"
+                    className="font-heading w-full h-11 bg-black hover:bg-zinc-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm rounded-lg transition flex items-center justify-center gap-2 shadow-xs cursor-pointer border border-black"
                   >
                     {isLoading ? (
                       <>
@@ -782,7 +1091,7 @@ export function QuickUserView() {
                       onClick={() => handleApplyPreset(preset)}
                       className="p-3 bg-white border border-slate-200 rounded-lg text-left hover:border-slate-400 transition shadow-2xs group cursor-pointer"
                     >
-                      <div className="font-semibold text-xs text-slate-900 group-hover:text-emerald-700">
+                      <div className="font-heading font-semibold text-xs text-slate-900 group-hover:text-emerald-700">
                         {preset.name}
                       </div>
                       <div className="text-[11px] text-slate-500 truncate mt-0.5">
@@ -802,7 +1111,7 @@ export function QuickUserView() {
               <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 tracking-tight capitalize">
+                    <h1 className="font-heading text-xl sm:text-2xl font-bold text-slate-900 tracking-tight capitalize">
                       {results.mainBroadPhrase || searchQuery}
                     </h1>
                     <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
@@ -854,7 +1163,7 @@ export function QuickUserView() {
                   <button
                     type="button"
                     onClick={handleSaveToHistory}
-                    className="px-3.5 py-2 bg-emerald-600 hover:bg-emerald-700 rounded-lg text-xs font-semibold text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                    className="px-3.5 py-2 bg-black hover:bg-zinc-800 rounded-lg text-xs font-semibold text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer border border-black"
                   >
                     {copiedKey === "save" ? (
                       <>
@@ -889,10 +1198,10 @@ export function QuickUserView() {
                         type="button"
                         data-active={isActive ? "true" : "false"}
                         onClick={() => setActiveTab(tab.id as MainTab)}
-                        className={`py-3 px-1 text-xs sm:text-sm font-medium border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                        className={`py-3 px-1 text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                           isActive
                             ? "border-emerald-600 text-emerald-700 font-semibold"
-                            : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300"
+                            : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 font-medium"
                         }`}
                       >
                         {tab.label}
@@ -905,10 +1214,146 @@ export function QuickUserView() {
               {/* TAB 1: OVERVIEW */}
               {activeTab === "overview" && (
                 <div className="space-y-5">
+                  {/* HERO: SYNTHESIZED READY-TO-USE LISTING PACKAGE */}
+                  <div className="bg-gradient-to-b from-white to-slate-50 border-2 border-slate-900 rounded-2xl p-5 sm:p-6 shadow-sm space-y-5">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 pb-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-xs font-bold bg-black text-white">
+                            <Sparkles className="w-3 h-3 text-amber-300" />
+                            <span>Groq AI Final Listing</span>
+                          </span>
+                          <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-emerald-50 text-emerald-800 border border-emerald-200">
+                            ✓ 100% Etsy Compliant
+                          </span>
+                          {results.competitorsAnalyzed?.length > 0 && (
+                            <span className="px-2 py-0.5 rounded-md text-[11px] font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                              Benchmarked vs {results.competitorsAnalyzed.length} Competitors
+                            </span>
+                          )}
+                        </div>
+                        <h2 className="font-heading text-lg sm:text-xl font-bold text-slate-900 mt-1">
+                          Your SEO-Optimized Final Listing
+                        </h2>
+                        <p className="text-xs text-slate-600">
+                          Complete, high-converting listing package synthesized from live competitor benchmark data. Ready for your shop.
+                        </p>
+                      </div>
+
+                      {/* 1-Click Copy Complete Package */}
+                      <button
+                        type="button"
+                        onClick={handleCopyCompletePackage}
+                        className="px-4 py-2.5 bg-black hover:bg-zinc-800 text-white rounded-xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2 shadow-sm transition shrink-0 cursor-pointer border border-black"
+                      >
+                        {copiedKey === "complete-package" ? (
+                          <>
+                            <Check className="w-4 h-4 text-emerald-400" />
+                            <span className="text-emerald-300">✓ Complete Package Copied!</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-4 h-4" />
+                            <span>📋 Copy Complete Listing Package</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Competitive Summary Strategy Callout */}
+                    {results.competitiveSummary && (
+                      <div className="p-3.5 bg-slate-900 text-white rounded-xl flex items-start gap-3 text-xs">
+                        <div className="w-6 h-6 rounded-full bg-emerald-500/20 text-emerald-400 flex items-center justify-center shrink-0 mt-0.5 font-bold text-sm">
+                          🎯
+                        </div>
+                        <div className="space-y-0.5">
+                          <span className="font-bold text-emerald-400 uppercase tracking-wider text-[10px]">
+                            Competitive Advantage & Algorithmic Strategy
+                          </span>
+                          <p className="text-slate-200 leading-relaxed text-xs">
+                            {results.competitiveSummary}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Quick Preview Grid: Title & 13 Tags Preview */}
+                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                      {/* Title Preview */}
+                      <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            Optimized Title
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono text-slate-500">
+                              {(editedTitle || results.title?.text || "").length} / 140 chars
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => triggerCopy("hero-title", editedTitle || results.title?.text || "")}
+                              className="p-1 text-slate-400 hover:text-slate-700 rounded transition cursor-pointer"
+                              title="Copy title"
+                            >
+                              {copiedKey === "hero-title" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                        <p className="text-xs sm:text-sm font-semibold text-slate-900 leading-snug">
+                          {editedTitle || results.title?.text || "Optimized Etsy Title"}
+                        </p>
+                      </div>
+
+                      {/* 13 Tags Preview */}
+                      <div className="p-4 bg-white border border-slate-200 rounded-xl space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                            13 Curated Tags (All ≤ 20 Chars)
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[11px] font-mono text-emerald-700 font-bold">
+                              {(editedTags.length > 0 ? editedTags : (results.tags?.list || [])).length} / 13 Tags
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => triggerCopy("hero-tags", (editedTags.length > 0 ? editedTags : (results.tags?.list || [])).join(", "))}
+                              className="p-1 text-slate-400 hover:text-slate-700 rounded transition cursor-pointer"
+                              title="Copy tags"
+                            >
+                              {copiedKey === "hero-tags" ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
+                            </button>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap gap-1.5 max-h-20 overflow-y-auto pt-1">
+                          {(editedTags.length > 0 ? editedTags : (results.tags?.list || [])).map((t: string, i: number) => (
+                            <span key={i} className="px-2 py-0.5 rounded bg-slate-100 border border-slate-200 text-[11px] font-medium text-slate-800">
+                              {t}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* View/Edit in Workspace Footer */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 pt-1 text-xs text-slate-500">
+                      <span className="italic">
+                        Want to tweak phrasing or review the complete description & FAQs?
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("listing")}
+                        className="font-bold text-slate-900 hover:underline flex items-center gap-1 cursor-pointer"
+                      >
+                        <span>Open Full Listing Workspace</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+
                   {/* Factual Research Coverage Breakdown */}
                   <div className="bg-white border border-slate-200 rounded-xl p-5 space-y-3">
                     <div className="flex items-center justify-between">
-                      <h2 className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                      <h2 className="font-heading text-xs font-bold text-slate-700 uppercase tracking-wider">
                         Research Coverage Status
                       </h2>
                       <button
@@ -924,7 +1369,7 @@ export function QuickUserView() {
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
                         <span className="text-slate-500 block text-[11px]">Competitors</span>
-                        <div className="font-mono font-bold text-slate-900">
+                        <div className="font-heading font-bold text-slate-900">
                           {results.competitorsAnalyzed?.length || 0} listings
                         </div>
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${researchCoverage.competitors.color}`}>
@@ -934,7 +1379,7 @@ export function QuickUserView() {
 
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
                         <span className="text-slate-500 block text-[11px]">Pricing Benchmarks</span>
-                        <div className="font-mono font-bold text-slate-900">
+                        <div className="font-heading font-bold text-slate-900">
                           {results.priceQuartiles?.sampleSize || 0} valid prices
                         </div>
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${researchCoverage.pricing.color}`}>
@@ -944,7 +1389,7 @@ export function QuickUserView() {
 
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
                         <span className="text-slate-500 block text-[11px]">Keyword Pool</span>
-                        <div className="font-mono font-bold text-slate-900">
+                        <div className="font-heading font-bold text-slate-900">
                           {results.topKeywords?.length || 0} candidates
                         </div>
                         <span className="inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border bg-blue-50 text-blue-700 border-blue-200">
@@ -954,7 +1399,7 @@ export function QuickUserView() {
 
                       <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg space-y-1">
                         <span className="text-slate-500 block text-[11px]">Product Facts</span>
-                        <div className="font-mono font-bold text-slate-900">
+                        <div className="font-heading font-bold text-slate-900">
                           {Object.keys(productFacts).length} fields provided
                         </div>
                         <span className={`inline-block px-1.5 py-0.5 rounded text-[10px] font-medium border ${researchCoverage.facts.color}`}>
@@ -1078,7 +1523,7 @@ export function QuickUserView() {
                         <button
                           type="button"
                           onClick={() => setIsEditingTitle(false)}
-                          className="px-3 py-1 bg-slate-900 text-white text-xs font-medium rounded-md cursor-pointer"
+                          className="px-3 py-1 bg-black hover:bg-zinc-800 text-white text-xs font-medium rounded-md cursor-pointer border border-black"
                         >
                           Done editing
                         </button>
@@ -1164,7 +1609,7 @@ export function QuickUserView() {
                         />
                         <button
                           type="submit"
-                          className="h-9 px-3 bg-slate-900 text-white text-xs font-semibold rounded-lg hover:bg-slate-800 transition cursor-pointer"
+                          className="h-9 px-3 bg-black text-white text-xs font-semibold rounded-lg hover:bg-zinc-800 transition cursor-pointer border border-black"
                         >
                           Add tag
                         </button>
@@ -1343,9 +1788,9 @@ export function QuickUserView() {
                       <button
                         type="button"
                         onClick={() => handleOpenDownloader(null)}
-                        className="text-xs font-semibold text-slate-700 bg-white border border-slate-200 hover:border-slate-300 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                        className="text-xs font-semibold text-white bg-black border border-black hover:bg-zinc-800 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
                       >
-                        <Download className="w-3.5 h-3.5 text-emerald-600" />
+                        <Download className="w-3.5 h-3.5 text-white" />
                         <span>Listing Downloader</span>
                       </button>
                       <button
@@ -1377,7 +1822,7 @@ export function QuickUserView() {
                         <button
                           type="button"
                           onClick={handleAnalyze}
-                          className="px-3.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+                          className="px-3.5 py-1.5 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer border border-black"
                         >
                           <RefreshCw className="w-3.5 h-3.5" />
                           <span>Retry search</span>
@@ -1439,8 +1884,8 @@ export function QuickUserView() {
                                 </span>
                               )}
                               <div className="absolute inset-0 bg-slate-950/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                <span className="px-2.5 py-1 bg-white/95 text-slate-900 rounded-md text-[11px] font-semibold flex items-center gap-1 shadow-sm">
-                                  <Download className="w-3 h-3 text-emerald-600" />
+                                <span className="px-2.5 py-1 bg-black/90 hover:bg-black text-white border border-white/20 rounded-md text-[11px] font-semibold flex items-center gap-1 shadow-sm">
+                                  <Download className="w-3 h-3 text-white" />
                                   <span>Inspect & Download</span>
                                 </span>
                               </div>
@@ -1509,39 +1954,59 @@ export function QuickUserView() {
               {/* TAB 4: LISTING (Titles, Description, FAQs) */}
               {activeTab === "listing" && (
                 <div className="space-y-5">
-                  <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-lg border border-slate-200 w-fit text-xs font-medium">
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200/80 pb-3">
+                    <div className="flex items-center gap-2 p-1 bg-slate-100 rounded-lg border border-slate-200 w-fit text-xs font-medium">
+                      <button
+                        type="button"
+                        onClick={() => setListingSubTab("titles")}
+                        className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                          listingSubTab === "titles"
+                            ? "bg-white text-slate-900 font-semibold shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Titles
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setListingSubTab("description")}
+                        className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                          listingSubTab === "description"
+                            ? "bg-white text-slate-900 font-semibold shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Description &amp; Care
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setListingSubTab("faqs")}
+                        className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
+                          listingSubTab === "faqs"
+                            ? "bg-white text-slate-900 font-semibold shadow-2xs"
+                            : "text-slate-600 hover:text-slate-900"
+                        }`}
+                      >
+                        Buyer FAQs
+                      </button>
+                    </div>
+
                     <button
                       type="button"
-                      onClick={() => setListingSubTab("titles")}
-                      className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                        listingSubTab === "titles"
-                          ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
+                      onClick={handleCopyCompletePackage}
+                      className="px-3.5 py-1.5 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer border border-black w-fit"
                     >
-                      Titles
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setListingSubTab("description")}
-                      className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                        listingSubTab === "description"
-                          ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      Description &amp; Care
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setListingSubTab("faqs")}
-                      className={`px-3 py-1.5 rounded-md transition cursor-pointer ${
-                        listingSubTab === "faqs"
-                          ? "bg-white text-slate-900 font-semibold shadow-2xs"
-                          : "text-slate-600 hover:text-slate-900"
-                      }`}
-                    >
-                      Buyer FAQs
+                      {copiedKey === "complete-package" ? (
+                        <>
+                          <Check className="w-3.5 h-3.5 text-emerald-400" />
+                          <span className="text-emerald-300">✓ Package Copied!</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span>📋 Copy Complete Listing Package</span>
+                        </>
+                      )}
                     </button>
                   </div>
 
@@ -1722,13 +2187,17 @@ export function QuickUserView() {
                 </div>
               )}
 
-              {/* TAB 5: PRICING (Statistical Quartiles with Evidence Threshold) */}
+              {/* TAB 5: PRICING (Official 2026 Etsy Fee Schedule & Competitor Benchmarking) */}
               {activeTab === "pricing" && (
                 <PricingCalculator
                   prices={
-                    results.competitorsAnalyzed?.map((c: any) => c.price).filter(Boolean) || []
+                    (results?.competitorsAnalyzed?.map((c: any) => c.price).filter(Boolean) || []).length > 0
+                      ? results.competitorsAnalyzed.map((c: any) => c.price).filter(Boolean)
+                      : (manualListings.map((l) => l?.price).filter(Boolean).length > 0
+                          ? manualListings.map((l) => l?.price).filter(Boolean)
+                          : manualPrices.filter(Boolean))
                   }
-                  productNoun={results.productNoun}
+                  productNoun={results?.productNoun}
                   initialCogs={productFacts.cogs}
                   initialPrice={productFacts.targetPrice}
                 />
@@ -1818,15 +2287,105 @@ export function QuickUserView() {
           )}
         </main>
 
-        {/* Footer with Mandatory Etsy Trademark Disclaimer */}
-        <footer className="border-t border-slate-200 bg-white py-6 text-center text-xs text-slate-400 space-y-1">
-          <p>
-            The term &apos;Etsy&apos; is a trademark of Etsy, Inc. This application uses the Etsy API but is not endorsed or certified by Etsy, Inc.
-          </p>
-          <p className="text-[11px] text-slate-400">
-            Engineered for high-converting handmade and artisan sellers.
-          </p>
+        {/* Sleek, Modern Minimalist Footer */}
+        <footer className="border-t border-slate-200 bg-white/90 backdrop-blur-sm mt-auto pt-8 pb-28 md:pb-8 transition-colors">
+          <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-5">
+            {/* Top row: Brand + Quick Utility Shortcuts */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="relative w-7 h-7 rounded-lg overflow-hidden bg-black flex items-center justify-center p-1 shrink-0 border border-black/10 shadow-2xs">
+                  <Image
+                    src="/logo-icon.png"
+                    alt="Etsy Intelligence"
+                    width={20}
+                    height={20}
+                    className="object-contain"
+                    unoptimized
+                  />
+                </div>
+                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2.5">
+                  <span className="font-heading font-bold text-sm text-slate-900 tracking-tight">
+                    Etsy Intelligence
+                  </span>
+                  <span className="hidden sm:inline-block text-slate-300">•</span>
+                  <span className="text-xs text-slate-500 font-medium">
+                    SEO &amp; Competitor Studio
+                  </span>
+                </div>
+              </div>
+
+              {/* Utility shortcuts */}
+              <div className="flex items-center gap-1 sm:gap-2 flex-wrap text-xs text-slate-600 font-medium">
+                <button
+                  type="button"
+                  onClick={() => handleOpenDownloader(null)}
+                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Download className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Downloader</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsFactsDrawerOpen(true)}
+                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Product Facts</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsDataDetailsOpen(true)}
+                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <Database className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Data Sources</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsHistoryOpen(true)}
+                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <History className="w-3.5 h-3.5 text-slate-400" />
+                  <span>History ({savedCount})</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Subtle Divider */}
+            <div className="border-t border-slate-100" />
+
+            {/* Bottom Row: Engine Status Indicator + Mandatory Etsy Disclaimer */}
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
+              <div className="flex items-center gap-2">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="text-slate-700 font-semibold text-[11px]">Engine Active</span>
+                <span className="text-slate-300">•</span>
+                <span className="text-slate-500 text-[11px]">Deterministic Evidence Only</span>
+                <span className="text-slate-300">•</span>
+                <button
+                  type="button"
+                  onClick={() => setIsDeviceManagerOpen(true)}
+                  className="text-slate-700 hover:text-black font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
+                >
+                  <span>Devices &amp; Apps</span>
+                </button>
+              </div>
+
+              <p className="text-left sm:text-right max-w-xl text-[11px] text-slate-500 leading-relaxed">
+                The term &apos;Etsy&apos; is a trademark of Etsy, Inc. This application uses the Etsy API but is not endorsed or certified by Etsy, Inc.
+              </p>
+            </div>
+          </div>
         </footer>
+
+        {/* Devices & Connected Apps Manager Modal */}
+        <DevicesAppsModal
+          isOpen={isDeviceManagerOpen}
+          onClose={() => setIsDeviceManagerOpen(false)}
+        />
 
         {/* Product Facts Drawer */}
         <ProductFactsDrawer
@@ -1866,6 +2425,21 @@ export function QuickUserView() {
           isOpen={isDownloaderOpen}
           onClose={() => setIsDownloaderOpen(false)}
           initialData={downloaderInitialData}
+          competitors={manualListings}
+          onToggleCompetitor={handleToggleCompetitor}
+          onRunAnalysisWithCompetitors={() => {
+            setShowManualUrls(true);
+            const firstComp = manualListings.find(Boolean);
+            const queryToUse =
+              searchQuery.trim() ||
+              firstComp?.tags?.[0] ||
+              firstComp?.title?.split(/[,|\-–—]/)[0]?.trim() ||
+              "etsy product";
+            if (!searchQuery.trim()) {
+              setSearchQuery(queryToUse);
+            }
+            handleAnalyze(undefined, queryToUse);
+          }}
           onUpdateListing={(updated) => {
             setDownloaderInitialData(updated);
             // Sync with manual competitor slots if matching

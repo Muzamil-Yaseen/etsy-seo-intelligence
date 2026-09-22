@@ -45,7 +45,7 @@ export function ProductFactsDrawer({
               <ShieldCheck className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-sm tracking-tight text-white">
+              <h3 className="font-heading font-bold text-sm tracking-tight text-white">
                 Confirmed Product Facts
               </h3>
               <p className="text-[11px] text-slate-300">
@@ -284,9 +284,9 @@ export function ProductFactsDrawer({
                 onClose();
                 onApplyAndReanalyze();
               }}
-              className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-xs"
+              className="px-4 py-2 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition flex items-center gap-1.5 shadow-xs border border-black cursor-pointer"
             >
-              <Sparkles className="w-3.5 h-3.5" />
+              <Sparkles className="w-3.5 h-3.5 text-white" />
               <span>Apply &amp; Re-optimize</span>
             </button>
           )}

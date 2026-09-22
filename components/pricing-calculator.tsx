@@ -12,12 +12,17 @@ import {
   Globe,
   ArrowRight,
   CheckCircle2,
+  Truck,
+  Sparkles,
+  SlidersHorizontal,
 } from "lucide-react";
 import {
   calculateEtsyFees,
   calculatePriceQuartiles,
+  calculateTargetPriceFromMargin,
   ETSY_REGIONS,
   EtsyRegion,
+  OffsiteAdsTier,
   PriceQuartiles,
 } from "@/lib/fees/etsy-fees";
 
@@ -37,7 +42,7 @@ export function PricingCalculator({
   // Selected Region / Market Currency
   const [selectedRegion, setSelectedRegion] = useState<EtsyRegion>("US");
 
-  // Parse numeric values from input prices
+  // Parse numeric values from input competitor prices
   const parsedPrices = useMemo(() => {
     return prices
       .map((p) => {
@@ -50,52 +55,109 @@ export function PricingCalculator({
       .filter((n): n is number => n !== null);
   }, [prices]);
 
-  // Compute Statistical Quartiles from real competitor data
+  // Compute Statistical / Competitor Benchmarks (supports 1, 2, 3, or more listings)
   const quartiles = useMemo<PriceQuartiles | null>(() => {
     return calculatePriceQuartiles(parsedPrices, ETSY_REGIONS[selectedRegion].currencyCode);
   }, [parsedPrices, selectedRegion]);
 
-  // Pricing recommendations based on real quartiles (strictly >= 5 listings)
   const isQuartilesAvailable = Boolean(quartiles && quartiles.isSufficient);
-  const medianPrice = isQuartilesAvailable && quartiles?.marketMedian !== undefined ? quartiles.marketMedian : (initialPrice || 25.0);
-  const p25Price = isQuartilesAvailable && quartiles?.lowerMarketRange !== undefined ? quartiles.lowerMarketRange : null;
-  const p75Price = isQuartilesAvailable && quartiles?.upperMarketRange !== undefined ? quartiles.upperMarketRange : null;
+  const medianPrice = isQuartilesAvailable && quartiles?.marketMedian !== undefined
+    ? quartiles.marketMedian
+    : (initialPrice || 25.0);
+  const p25Price = isQuartilesAvailable && quartiles?.lowerMarketRange !== undefined
+    ? quartiles.lowerMarketRange
+    : null;
+  const p75Price = isQuartilesAvailable && quartiles?.upperMarketRange !== undefined
+    ? quartiles.upperMarketRange
+    : null;
 
-  // Active user selection
-  const [activeTier, setActiveTier] = useState<"low" | "median" | "premium">("median");
-  const [targetPrice, setTargetPrice] = useState<number>(initialPrice || (isQuartilesAvailable ? medianPrice : 25.0));
+  // Active positioning tier selection
+  const [activeTier, setActiveTier] = useState<"low" | "median" | "premium" | "custom">("median");
+  
+  // Retail price state: defaults to competitor median if available, otherwise initialPrice or $25
+  const [targetPrice, setTargetPrice] = useState<number>(() => {
+    if (initialPrice && initialPrice > 0) return initialPrice;
+    if (isQuartilesAvailable && quartiles?.marketMedian) return quartiles.marketMedian;
+    return 25.0;
+  });
 
-  // COGS is never pre-filled with a hidden guess! Default must be blank.
+  // If quartiles become available and initialPrice was not explicitly provided, align to median
+  useEffect(() => {
+    if (isQuartilesAvailable && quartiles?.marketMedian && !initialPrice) {
+      setTargetPrice(quartiles.marketMedian);
+    }
+  }, [isQuartilesAvailable, quartiles?.marketMedian, initialPrice]);
+
+  // Shipping charged to buyer (revenue to seller)
+  const [shippingChargedInput, setShippingChargedInput] = useState<string>("0.00");
+  const numShippingCharged = useMemo(() => {
+    const val = parseFloat(shippingChargedInput);
+    return isNaN(val) || val < 0 ? 0 : val;
+  }, [shippingChargedInput]);
+
+  // Cost of Goods Sold (COGS)
   const [cogsInput, setCogsInput] = useState<string>(
     initialCogs !== undefined && initialCogs !== null ? String(initialCogs) : ""
   );
-
   const numCogs = useMemo(() => {
     if (!cogsInput.trim()) return null;
     const val = parseFloat(cogsInput);
     return isNaN(val) || val < 0 ? null : val;
   }, [cogsInput]);
 
-  // Update target price when tier changes or quartiles initialize (only if real quartiles exist)
-  useEffect(() => {
-    if (!isQuartilesAvailable) return;
-    if (activeTier === "low" && p25Price !== null) setTargetPrice(p25Price);
-    else if (activeTier === "median" && medianPrice !== null) setTargetPrice(medianPrice);
-    else if (activeTier === "premium" && p75Price !== null) setTargetPrice(p75Price);
-  }, [activeTier, p25Price, medianPrice, p75Price, isQuartilesAvailable]);
+  // Actual shipping / postage cost paid by seller
+  const [shippingCostInput, setShippingCostInput] = useState<string>("0.00");
+  const numShippingCost = useMemo(() => {
+    const val = parseFloat(shippingCostInput);
+    return isNaN(val) || val < 0 ? 0 : val;
+  }, [shippingCostInput]);
+
+  // Offsite Ads Tier (none 0%, under10k 15%, over10k 12%)
+  const [offsiteAdsTier, setOffsiteAdsTier] = useState<OffsiteAdsTier>("none");
+
+  // Onsite Etsy Ads spend per sale
+  const [etsyAdsInput, setEtsyAdsInput] = useState<string>("0.00");
+  const numEtsyAds = useMemo(() => {
+    const val = parseFloat(etsyAdsInput);
+    return isNaN(val) || val < 0 ? 0 : val;
+  }, [etsyAdsInput]);
+
+  // Reverse Target Margin State
+  const [targetMarginInput, setTargetMarginInput] = useState<number>(50);
+  const [showAdvancedFees, setShowAdvancedFees] = useState<boolean>(false);
 
   // Quick price adjuster
   const adjustPrice = (delta: number) => {
+    setActiveTier("custom");
     setTargetPrice((prev) => Math.max(1, Math.round((prev + delta) * 100) / 100));
   };
 
   // Run region-aware Etsy fee calculation
   const feeDetails = useMemo(() => {
-    return calculateEtsyFees(targetPrice, numCogs, selectedRegion);
-  }, [targetPrice, numCogs, selectedRegion]);
+    return calculateEtsyFees(targetPrice, numCogs, selectedRegion, {
+      shippingCharged: numShippingCharged,
+      shippingCost: numShippingCost,
+      offsiteAdsTier,
+      etsyAdsSpend: numEtsyAds,
+    });
+  }, [targetPrice, numCogs, selectedRegion, numShippingCharged, numShippingCost, offsiteAdsTier, numEtsyAds]);
 
   const regionConfig = ETSY_REGIONS[selectedRegion];
   const sym = regionConfig.currencySymbol;
+
+  // Suggested price based on reverse margin calculator
+  const reverseSuggestedPrice = useMemo(() => {
+    if (numCogs === null || numCogs <= 0) return null;
+    return calculateTargetPriceFromMargin({
+      targetMarginPercent: targetMarginInput,
+      cogs: numCogs,
+      shippingCost: numShippingCost,
+      shippingCharged: numShippingCharged,
+      region: selectedRegion,
+      offsiteAdsTier,
+      etsyAdsSpend: numEtsyAds,
+    });
+  }, [numCogs, targetMarginInput, numShippingCost, numShippingCharged, selectedRegion, offsiteAdsTier, numEtsyAds]);
 
   return (
     <div className="bg-white border border-slate-200 rounded-xl p-6 sm:p-7 space-y-6">
@@ -137,17 +199,18 @@ export function PricingCalculator({
         </div>
       </div>
 
-      {/* Competitor Price Quartiles Strip */}
-      <div className="space-y-2">
+      {/* Competitor Price Benchmarks Ribbon */}
+      <div className="space-y-2.5">
         <div className="flex items-center justify-between">
-          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider">
-            Market Benchmark Quartiles
-          </span>
-          <span className="text-[11px] text-slate-500">
+          <div className="flex items-center gap-2">
+            <TrendingUp className="w-4 h-4 text-slate-700" />
+            <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+              Competitor Price Benchmarks
+            </span>
+          </div>
+          <span className="text-[11px] font-medium text-slate-500">
             {quartiles && quartiles.isSufficient
-              ? `Calculated from ${quartiles.sampleSize} verified competitor listings`
-              : quartiles
-              ? `${quartiles.sampleSize} competitor price${quartiles.sampleSize === 1 ? "" : "s"} found`
+              ? `${quartiles.sampleSize} competitor${quartiles.sampleSize === 1 ? "" : "s"} benchmarked`
               : "No competitor prices found"}
           </span>
         </div>
@@ -157,78 +220,86 @@ export function PricingCalculator({
             {/* Min */}
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[11px] font-semibold text-slate-500 block uppercase tracking-wider">
-                Market Min
+                Lowest Competitor
               </span>
-              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900">
+              <div className="font-heading text-lg sm:text-xl font-bold text-slate-900">
                 {sym}{quartiles.marketMin !== undefined ? quartiles.marketMin.toFixed(2) : "—"}
               </div>
-              <p className="text-[10px] text-slate-400">Lowest active entry</p>
+              <p className="text-[10px] text-slate-400">Lowest active price</p>
             </div>
 
-            {/* P25: Lower Market Range */}
+            {/* P25 / Lower */}
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[11px] font-semibold text-slate-500 block uppercase tracking-wider">
-                Lower Range (P25)
+                Entry Tier (P25)
               </span>
-              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900">
+              <div className="font-heading text-lg sm:text-xl font-bold text-slate-900">
                 {sym}{quartiles.lowerMarketRange !== undefined ? quartiles.lowerMarketRange.toFixed(2) : "—"}
               </div>
-              <p className="text-[10px] text-slate-400">Entry-level tier</p>
+              <p className="text-[10px] text-slate-400">Volume &amp; fast reviews</p>
             </div>
 
-            {/* Median: Market Median */}
-            <div className="p-3.5 rounded-lg bg-emerald-50/50 border border-emerald-300 space-y-1 relative">
-              <span className="text-[11px] font-bold text-emerald-800 block uppercase tracking-wider">
-                Market Median (P50)
-              </span>
-              <div className="text-lg sm:text-xl font-bold font-mono text-emerald-900">
+            {/* Median Sweet Spot */}
+            <div className="p-3.5 rounded-lg bg-emerald-50/70 border-2 border-emerald-400 space-y-1 relative shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-bold text-emerald-900 block uppercase tracking-wider">
+                  Market Median (P50)
+                </span>
+                <span className="px-1.5 py-0.2 bg-emerald-600 text-white text-[9px] font-bold rounded">
+                  Sweet Spot
+                </span>
+              </div>
+              <div className="font-heading text-lg sm:text-xl font-bold text-emerald-950">
                 {sym}{quartiles.marketMedian !== undefined ? quartiles.marketMedian.toFixed(2) : "—"}
               </div>
-              <p className="text-[10px] text-emerald-700 font-medium">Sweet spot</p>
+              <p className="text-[10px] text-emerald-800 font-medium">Equilibrium pricing</p>
             </div>
 
-            {/* P75: Upper Market Range */}
+            {/* P75 / Upper */}
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1">
               <span className="text-[11px] font-semibold text-slate-500 block uppercase tracking-wider">
-                Upper Range (P75)
+                Upper Tier (P75)
               </span>
-              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900">
+              <div className="font-heading text-lg sm:text-xl font-bold text-slate-900">
                 {sym}{quartiles.upperMarketRange !== undefined ? quartiles.upperMarketRange.toFixed(2) : "—"}
               </div>
-              <p className="text-[10px] text-slate-400">Premium craft tier</p>
+              <p className="text-[10px] text-slate-400">Custom / Artisan craft</p>
             </div>
 
             {/* Max */}
             <div className="p-3.5 rounded-lg bg-slate-50 border border-slate-200 space-y-1 col-span-2 sm:col-span-1">
               <span className="text-[11px] font-semibold text-slate-500 block uppercase tracking-wider">
-                Market Max
+                Highest Competitor
               </span>
-              <div className="text-lg sm:text-xl font-bold font-mono text-slate-900">
+              <div className="font-heading text-lg sm:text-xl font-bold text-slate-900">
                 {sym}{quartiles.marketMax !== undefined ? quartiles.marketMax.toFixed(2) : "—"}
               </div>
-              <p className="text-[10px] text-slate-400">High-end benchmark</p>
+              <p className="text-[10px] text-slate-400">Luxury / High-end cap</p>
             </div>
           </div>
         ) : (
-          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1">
-            <span className="font-semibold text-slate-800 block">
-              Insufficient market data for price quartiles
-            </span>
+          <div className="p-4 rounded-lg bg-slate-50 border border-slate-200 text-xs text-slate-600 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <Info className="w-4 h-4 text-slate-500 shrink-0" />
+              <span className="font-bold text-slate-800">
+                Add 1 to 3 Competitors for Instant Price Benchmarking
+              </span>
+            </div>
             <p className="text-[11px] text-slate-500">
-              {quartiles ? quartiles.message : "At least 5 competitor listings are required to calculate statistically reliable quartiles."} You can still enter your target retail price and production costs below to calculate exact Etsy fees and take-home margins.
+              When you add competitor listings using the browser extension or manual slots, real market min, median sweet spot, and upper tiers populate here automatically. You can enter your retail price and material costs below anytime.
             </p>
           </div>
         )}
       </div>
 
-      {/* Strategic Positioning Tier Selector: only show if quartiles are sufficient */}
+      {/* Strategic Positioning Quick-Select Buttons */}
       {quartiles && quartiles.isSufficient && quartiles.lowerMarketRange && quartiles.marketMedian && quartiles.upperMarketRange && (
-        <div className="space-y-3">
-          <span className="text-xs font-semibold text-slate-600 uppercase tracking-wider block">
-            Strategic Positioning Options:
+        <div className="space-y-2">
+          <span className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
+            Positioning Strategies:
           </span>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {/* Low Tier */}
             <button
               type="button"
@@ -236,7 +307,7 @@ export function PricingCalculator({
                 setActiveTier("low");
                 setTargetPrice(quartiles.lowerMarketRange!);
               }}
-              className={`p-4 rounded-lg text-left border transition flex flex-col justify-between gap-3 cursor-pointer ${
+              className={`p-3.5 rounded-lg text-left border transition flex flex-col justify-between gap-2.5 cursor-pointer ${
                 activeTier === "low"
                   ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                   : "bg-white border-slate-200 text-slate-900 hover:border-slate-400"
@@ -245,19 +316,19 @@ export function PricingCalculator({
               <div>
                 <div className="flex items-center justify-between">
                   <span className={`text-xs font-bold uppercase tracking-wider ${activeTier === "low" ? "text-emerald-400" : "text-slate-700"}`}>
-                    Lower Market Range (P25)
+                    Volume Entry (P25)
                   </span>
-                  <span className="text-lg font-bold font-mono">
+                  <span className="font-heading text-base font-bold">
                     {sym}{quartiles.lowerMarketRange.toFixed(2)}
                   </span>
                 </div>
-                <p className={`text-xs mt-2 leading-relaxed ${activeTier === "low" ? "text-slate-300" : "text-slate-500"}`}>
-                  Positioned at the 25th percentile. Useful for newly launched shops looking to gain initial sales velocity and buyer reviews.
+                <p className={`text-xs mt-1.5 leading-relaxed ${activeTier === "low" ? "text-slate-300" : "text-slate-500"}`}>
+                  Priced to gain immediate sales velocity and early 5-star customer reviews.
                 </p>
               </div>
               <div className="pt-2 border-t border-slate-200/20 text-xs font-medium">
-                <span className={activeTier === "low" ? "text-emerald-400" : "text-slate-500"}>
-                  {activeTier === "low" ? "✓ Selected" : "Select Lower tier"}
+                <span className={activeTier === "low" ? "text-emerald-400 font-semibold" : "text-slate-500"}>
+                  {activeTier === "low" ? "✓ Selected" : "Use Entry Tier"}
                 </span>
               </div>
             </button>
@@ -269,7 +340,7 @@ export function PricingCalculator({
                 setActiveTier("median");
                 setTargetPrice(quartiles.marketMedian!);
               }}
-              className={`p-4 rounded-lg text-left border-2 transition flex flex-col justify-between gap-3 cursor-pointer ${
+              className={`p-3.5 rounded-lg text-left border-2 transition flex flex-col justify-between gap-2.5 cursor-pointer ${
                 activeTier === "median"
                   ? "bg-slate-900 text-white border-emerald-500 shadow-xs"
                   : "bg-white border-emerald-300 text-slate-900 hover:border-emerald-500"
@@ -277,20 +348,20 @@ export function PricingCalculator({
             >
               <div>
                 <div className="flex items-center justify-between">
-                  <span className={`text-xs font-bold uppercase tracking-wider ${activeTier === "median" ? "text-emerald-400" : "text-emerald-700"}`}>
+                  <span className={`text-xs font-bold uppercase tracking-wider ${activeTier === "median" ? "text-emerald-400" : "text-emerald-800"}`}>
                     Market Median (P50)
                   </span>
-                  <span className="text-lg font-bold font-mono">
+                  <span className="font-heading text-base font-bold">
                     {sym}{quartiles.marketMedian.toFixed(2)}
                   </span>
                 </div>
-                <p className={`text-xs mt-2 leading-relaxed ${activeTier === "median" ? "text-slate-300" : "text-slate-500"}`}>
-                  Center of the market. Reflects equilibrium pricing across established competitors while protecting margins.
+                <p className={`text-xs mt-1.5 leading-relaxed ${activeTier === "median" ? "text-slate-300" : "text-slate-500"}`}>
+                  Market equilibrium sweet spot. Matches top competitors while preserving solid margins.
                 </p>
               </div>
               <div className="pt-2 border-t border-slate-200/20 text-xs font-medium">
-                <span className={activeTier === "median" ? "text-emerald-400" : "text-emerald-700 font-semibold"}>
-                  {activeTier === "median" ? "✓ Selected (Recommended)" : "Select Market Median"}
+                <span className={activeTier === "median" ? "text-emerald-400 font-semibold" : "text-emerald-700 font-semibold"}>
+                  {activeTier === "median" ? "✓ Selected (Recommended)" : "Use Market Median"}
                 </span>
               </div>
             </button>
@@ -302,7 +373,7 @@ export function PricingCalculator({
                 setActiveTier("premium");
                 setTargetPrice(quartiles.upperMarketRange!);
               }}
-              className={`p-4 rounded-lg text-left border transition flex flex-col justify-between gap-3 cursor-pointer ${
+              className={`p-3.5 rounded-lg text-left border transition flex flex-col justify-between gap-2.5 cursor-pointer ${
                 activeTier === "premium"
                   ? "bg-slate-900 text-white border-slate-900 shadow-xs"
                   : "bg-white border-slate-200 text-slate-900 hover:border-slate-400"
@@ -311,19 +382,19 @@ export function PricingCalculator({
               <div>
                 <div className="flex items-center justify-between">
                   <span className={`text-xs font-bold uppercase tracking-wider ${activeTier === "premium" ? "text-emerald-400" : "text-slate-700"}`}>
-                    Upper Market Range (P75)
+                    Artisan Premium (P75)
                   </span>
-                  <span className="text-lg font-bold font-mono">
+                  <span className="font-heading text-base font-bold">
                     {sym}{quartiles.upperMarketRange.toFixed(2)}
                   </span>
                 </div>
-                <p className={`text-xs mt-2 leading-relaxed ${activeTier === "premium" ? "text-slate-300" : "text-slate-500"}`}>
-                  Priced at the 75th percentile. Supported when offering bespoke personalization, premium packaging, or rare materials.
+                <p className={`text-xs mt-1.5 leading-relaxed ${activeTier === "premium" ? "text-slate-300" : "text-slate-500"}`}>
+                  High-margin tier for bespoke personalization, luxury unboxing, or rare materials.
                 </p>
               </div>
               <div className="pt-2 border-t border-slate-200/20 text-xs font-medium">
-                <span className={activeTier === "premium" ? "text-emerald-400" : "text-slate-500"}>
-                  {activeTier === "premium" ? "✓ Selected" : "Select Upper tier"}
+                <span className={activeTier === "premium" ? "text-emerald-400 font-semibold" : "text-slate-500"}>
+                  {activeTier === "premium" ? "✓ Selected" : "Use Premium Tier"}
                 </span>
               </div>
             </button>
@@ -331,210 +402,393 @@ export function PricingCalculator({
         </div>
       )}
 
-      {/* Etsy Net Margin & Fee Breakdown Panel */}
-      <div className="bg-slate-50 border border-slate-200 rounded-lg p-5 space-y-5">
-        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 border-b border-slate-200 pb-4">
-          <div>
+      {/* Pricing, Shipping & Cost Inputs Panel */}
+      <div className="bg-slate-50 border border-slate-200 rounded-xl p-5 space-y-5">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 pb-3">
+          <div className="flex items-center gap-2">
+            <Calculator className="w-4 h-4 text-slate-700" />
             <span className="text-sm font-bold text-slate-900">
-              Etsy Fee &amp; Payout Calculator ({regionConfig.countryName})
+              Etsy Listing Revenue &amp; Seller Cost Inputs
             </span>
-            <p className="text-xs text-slate-500">
-              Listing fee {sym}{regionConfig.listingFee.toFixed(2)} • Transaction {(regionConfig.transactionPercent * 100).toFixed(1)}% • Payment {(regionConfig.paymentPercent * 100).toFixed(1)}% + {sym}{regionConfig.paymentFixed.toFixed(2)}
-              {regionConfig.regulatoryOperatingPercent ? ` • Regulatory ${(regionConfig.regulatoryOperatingPercent * 100).toFixed(2)}%` : ""}
+          </div>
+          <span className="text-[11px] text-slate-500">
+            Etsy fee formulas updated June 2026 ({regionConfig.countryName})
+          </span>
+        </div>
+
+        {/* 4 Input Controls: Retail Price, Shipping Charged, COGS, Shipping Cost */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. Retail Price */}
+          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800">
+                Item Retail Price
+              </label>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => adjustPrice(-1)}
+                  className="w-5 h-5 flex items-center justify-center text-xs font-bold text-slate-600 hover:bg-slate-100 rounded"
+                  title="Decrease $1"
+                >
+                  -
+                </button>
+                <button
+                  type="button"
+                  onClick={() => adjustPrice(1)}
+                  className="w-5 h-5 flex items-center justify-center text-xs font-bold text-emerald-700 hover:bg-emerald-50 rounded"
+                  title="Increase $1"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
+                {sym}
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={targetPrice}
+                onChange={(e) => {
+                  setActiveTier("custom");
+                  setTargetPrice(Math.max(0, parseFloat(e.target.value) || 0));
+                }}
+                className="w-full h-9 bg-slate-50 border border-slate-200 rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-slate-900 outline-none transition"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400">Product listing price</p>
+          </div>
+
+          {/* 2. Shipping Charged to Buyer */}
+          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800">
+                Shipping Charged (Buyer)
+              </label>
+              {numShippingCharged > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShippingChargedInput("0.00")}
+                  className="text-[10px] font-semibold text-emerald-600 hover:underline"
+                >
+                  Free Shipping
+                </button>
+              )}
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
+                {sym}
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={shippingChargedInput}
+                onChange={(e) => setShippingChargedInput(e.target.value)}
+                placeholder="0.00 (Free Shipping)"
+                className="w-full h-9 bg-slate-50 border border-slate-200 rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-slate-900 outline-none transition"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400">
+              Etsy takes 6.5% transaction + processing on this too
             </p>
           </div>
 
-          <div className="flex flex-wrap items-center gap-3">
-            {/* Quick Adjust Buttons */}
-            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg p-1">
-              <button
-                type="button"
-                onClick={() => adjustPrice(-5)}
-                className="h-7 px-2 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition"
-                title="Decrease 5"
-              >
-                -5
-              </button>
-              <button
-                type="button"
-                onClick={() => adjustPrice(-1)}
-                className="h-7 px-2 text-xs font-bold text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded transition"
-                title="Decrease 1"
-              >
-                -1
-              </button>
-              <button
-                type="button"
-                onClick={() => adjustPrice(1)}
-                className="h-7 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 rounded transition"
-                title="Increase 1"
-              >
-                +1
-              </button>
-              <button
-                type="button"
-                onClick={() => adjustPrice(5)}
-                className="h-7 px-2 text-xs font-bold text-emerald-700 hover:bg-emerald-50 rounded transition"
-                title="Increase 5"
-              >
-                +5
-              </button>
+          {/* 3. Cost of Goods Sold (COGS) */}
+          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800">
+                Materials &amp; Labor (COGS)
+              </label>
+              {feeDetails.hasCogs && (
+                <span className="text-[10px] font-bold text-emerald-600">✓ Set</span>
+              )}
             </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
+                {sym}
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={cogsInput}
+                onChange={(e) => setCogsInput(e.target.value)}
+                placeholder="e.g. 8.50"
+                className="w-full h-9 bg-slate-50 border border-slate-200 rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-slate-900 outline-none transition"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400">Raw materials &amp; packaging</p>
+          </div>
 
-            {/* Retail Price input */}
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-700">Retail:</span>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono font-semibold text-slate-400">
-                  {sym}
-                </span>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={targetPrice}
-                  onChange={(e) => setTargetPrice(parseFloat(e.target.value) || 0)}
-                  className="w-24 h-8 bg-white border border-slate-200 rounded-md pl-6 pr-2 text-xs font-mono font-bold text-slate-900 focus:border-slate-900 outline-none"
-                />
+          {/* 4. Seller Actual Shipping Cost (Postage) */}
+          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-slate-800">
+                Actual Postage Cost (Seller)
+              </label>
+              <Truck className="w-3.5 h-3.5 text-slate-400" />
+            </div>
+            <div className="relative">
+              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
+                {sym}
+              </span>
+              <input
+                type="number"
+                step="0.5"
+                min="0"
+                value={shippingCostInput}
+                onChange={(e) => setShippingCostInput(e.target.value)}
+                placeholder="0.00"
+                className="w-full h-9 bg-slate-50 border border-slate-200 rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 focus:bg-white focus:border-slate-900 outline-none transition"
+              />
+            </div>
+            <p className="text-[10px] text-slate-400">Courier label cost paid by you</p>
+          </div>
+        </div>
+
+        {/* Advanced Fee Toggles (Offsite Ads & Etsy Ads) */}
+        <div className="pt-2 border-t border-slate-200">
+          <div className="flex items-center justify-between">
+            <button
+              type="button"
+              onClick={() => setShowAdvancedFees(!showAdvancedFees)}
+              className="flex items-center gap-1.5 text-xs font-semibold text-slate-700 hover:text-slate-900 cursor-pointer"
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5 text-slate-500" />
+              <span>Advertising &amp; Additional Commission Controls</span>
+              <span className="text-[11px] text-slate-500">
+                ({offsiteAdsTier === "none" ? "Offsite Ads: None" : offsiteAdsTier === "under10k" ? "Offsite Ads: 15%" : "Offsite Ads: 12%"} • {showAdvancedFees ? "Hide" : "Customize"})
+              </span>
+            </button>
+
+            <span className="text-[11px] text-slate-500 font-mono">
+              Total Buyer Pays: <strong className="text-slate-900">{sym}{feeDetails.totalBuyerPays.toFixed(2)}</strong>
+            </span>
+          </div>
+
+          {showAdvancedFees && (
+            <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white p-4 rounded-lg border border-slate-200">
+              {/* Offsite Ads Tier */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 block">
+                  Etsy Offsite Ads Fee
+                </label>
+                <select
+                  value={offsiteAdsTier}
+                  onChange={(e) => setOffsiteAdsTier(e.target.value as OffsiteAdsTier)}
+                  className="w-full h-9 px-3 bg-slate-50 border border-slate-200 rounded-lg text-xs font-semibold text-slate-800 outline-none focus:border-slate-900 transition"
+                >
+                  <option value="none">0% — Opted Out / Direct Organic Sale</option>
+                  <option value="under10k">15% — Standard Tier (Shop sales &lt; $10k/yr, optional)</option>
+                  <option value="over10k">12% — High-Volume Tier (Shop sales &gt; $10k/yr, mandatory)</option>
+                </select>
+                <p className="text-[10px] text-slate-400">
+                  Offsite Ads fee is capped at $100 per attributed order.
+                </p>
+              </div>
+
+              {/* Onsite Etsy Ads Spend */}
+              <div className="space-y-1.5">
+                <label className="text-xs font-bold text-slate-800 block">
+                  Etsy Onsite Ads Spend per Sale
+                </label>
+                <div className="relative">
+                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400">
+                    {sym}
+                  </span>
+                  <input
+                    type="number"
+                    step="0.25"
+                    min="0"
+                    value={etsyAdsInput}
+                    onChange={(e) => setEtsyAdsInput(e.target.value)}
+                    placeholder="0.00"
+                    className="w-full h-9 bg-slate-50 border border-slate-200 rounded-lg pl-7 pr-3 text-xs font-mono font-bold text-slate-900 focus:border-slate-900 outline-none transition"
+                  />
+                </div>
+                <p className="text-[10px] text-slate-400">
+                  Estimated promoted listings CPC budget per unit sold.
+                </p>
               </div>
             </div>
+          )}
+        </div>
 
-            {/* COGS input */}
+        {/* Reverse Target Margin Helper Card */}
+        <div className="bg-emerald-50/50 border border-emerald-200 rounded-lg p-4 space-y-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
             <div className="flex items-center gap-2">
-              <span className="text-xs font-semibold text-slate-700">Materials Cost (COGS):</span>
-              <div className="relative">
-                <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-mono font-semibold text-slate-400">
-                  {sym}
+              <Sparkles className="w-4 h-4 text-emerald-700" />
+              <span className="text-xs font-bold text-emerald-950 uppercase tracking-wider">
+                Target Margin Reverse Pricing Tool
+              </span>
+            </div>
+            <div className="flex items-center gap-1.5">
+              {[35, 45, 50, 60].map((pct) => (
+                <button
+                  key={pct}
+                  type="button"
+                  onClick={() => setTargetMarginInput(pct)}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold transition cursor-pointer ${
+                    targetMarginInput === pct
+                      ? "bg-emerald-700 text-white"
+                      : "bg-white text-emerald-800 border border-emerald-300 hover:bg-emerald-100"
+                  }`}
+                >
+                  {pct}%
+                </button>
+              ))}
+            </div>
+          </div>
+
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+            <div>
+              {reverseSuggestedPrice !== null ? (
+                <p className="text-slate-700 text-xs">
+                  To achieve your desired <strong className="text-emerald-800 font-bold">{targetMarginInput}% profit margin</strong> after all Etsy fees and shipping, list at:
+                </p>
+              ) : (
+                <p className="text-slate-500 text-xs">
+                  Enter your <strong className="text-slate-800">Materials Cost (COGS)</strong> in the field above to calculate the exact retail price needed for a {targetMarginInput}% net margin.
+                </p>
+              )}
+            </div>
+
+            {reverseSuggestedPrice !== null && (
+              <div className="flex items-center gap-2">
+                <span className="font-heading text-lg font-bold text-emerald-900">
+                  {sym}{reverseSuggestedPrice.toFixed(2)}
                 </span>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={cogsInput}
-                  onChange={(e) => setCogsInput(e.target.value)}
-                  placeholder="e.g. 14.00"
-                  className="w-28 h-8 bg-white border border-slate-200 rounded-md pl-6 pr-2 text-xs font-mono font-bold text-slate-900 focus:border-slate-900 outline-none"
-                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setActiveTier("custom");
+                    setTargetPrice(reverseSuggestedPrice);
+                  }}
+                  className="px-3 py-1 bg-emerald-700 hover:bg-emerald-800 text-white rounded-md text-xs font-bold transition shadow-xs cursor-pointer"
+                >
+                  Apply Suggested Price
+                </button>
               </div>
+            )}
+          </div>
+        </div>
+
+        {/* 4 Official Etsy Fee Breakdown Cards */}
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+              Exact Fee Deductions ({regionConfig.countryName})
+            </span>
+            <span className="text-[11px] font-mono font-bold text-slate-700">
+              Total Order: {sym}{feeDetails.totalBuyerPays.toFixed(2)}
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            {/* 1. Listing Fee */}
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1">
+              <span className="text-xs font-medium text-slate-500 block">Listing Fee</span>
+              <span className="font-mono font-bold text-slate-900 text-base">
+                {sym}{feeDetails.listingFee.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-slate-400 block">Per 4-mo renewal or sale</span>
+            </div>
+
+            {/* 2. Transaction Fee */}
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1">
+              <span className="text-xs font-medium text-slate-500 block">Transaction (6.5%)</span>
+              <span className="font-mono font-bold text-slate-900 text-base">
+                {sym}{feeDetails.transactionFee.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-slate-400 block">Item + shipping commission</span>
+            </div>
+
+            {/* 3. Payment Processing Fee */}
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1">
+              <span className="text-xs font-medium text-slate-500 block">
+                Processing ({(regionConfig.paymentPercent * 100).toFixed(0)}% + {sym}{regionConfig.paymentFixed.toFixed(2)})
+              </span>
+              <span className="font-mono font-bold text-slate-900 text-base">
+                {sym}{feeDetails.paymentFee.toFixed(2)}
+              </span>
+              <span className="text-[10px] text-slate-400 block">Etsy Payments gateway</span>
+            </div>
+
+            {/* 4. Ads & Additional Fees */}
+            <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1">
+              <span className="text-xs font-medium text-slate-500 block">
+                Ads &amp; Regulatory
+              </span>
+              <span className="font-mono font-bold text-slate-900 text-base">
+                {sym}{(feeDetails.offsiteAdsFee + feeDetails.etsyAdsSpend + feeDetails.regulatoryOperatingFee).toFixed(2)}
+              </span>
+              <span className="text-[10px] text-slate-400 block">
+                {feeDetails.offsiteAdsTier !== "none" ? `Offsite ${feeDetails.offsiteAdsTier === "under10k" ? "15%" : "12%"}` : "0% Offsite Ads"}
+                {feeDetails.regulatoryOperatingFee > 0 ? ` • Reg ${(regionConfig.regulatoryOperatingPercent! * 100).toFixed(2)}%` : ""}
+              </span>
             </div>
           </div>
         </div>
 
-        {/* 4 Fee Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1">
-            <span className="text-xs font-medium text-slate-500 block">Listing Fee</span>
-            <span className="font-mono font-bold text-slate-900 text-base">
-              {sym}{feeDetails.listingFee.toFixed(2)}
+        {/* Total Etsy Cut Banner */}
+        <div className="flex items-center justify-between bg-slate-900 text-white px-4 py-3 rounded-lg text-xs">
+          <div className="flex items-center gap-2">
+            <span className="font-semibold uppercase tracking-wider text-slate-300">
+              Total Etsy Commission &amp; Fees:
             </span>
-            <span className="text-[11px] text-slate-400 block">Fixed per 4-month auto-renew</span>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1">
-            <span className="text-xs font-medium text-slate-500 block">Transaction (6.5%)</span>
-            <span className="font-mono font-bold text-slate-900 text-base">
-              {sym}{feeDetails.transactionFee.toFixed(2)}
-            </span>
-            <span className="text-[11px] text-slate-400 block">Etsy order commission</span>
-          </div>
-
-          <div className="bg-white p-3.5 rounded-lg border border-slate-200 space-y-1">
-            <span className="text-xs font-medium text-slate-500 block">
-              Processing ({(regionConfig.paymentPercent * 100).toFixed(0)}% + {sym}{regionConfig.paymentFixed.toFixed(2)})
-            </span>
-            <span className="font-mono font-bold text-slate-900 text-base">
-              {sym}{feeDetails.paymentFee.toFixed(2)}
-            </span>
-            <span className="text-[11px] text-slate-400 block">Payment gateway</span>
-          </div>
-
-          <div className="bg-slate-100/60 p-3.5 rounded-lg border border-slate-200 space-y-1">
-            <span className="text-xs font-semibold text-slate-700 block">Total Etsy Fees</span>
-            <span className="font-mono font-bold text-slate-900 text-base">
+            <span className="font-mono font-bold text-base text-emerald-400">
               -{sym}{feeDetails.totalFees.toFixed(2)}
             </span>
-            <span className="text-[11px] font-medium text-slate-600 block">
-              {feeDetails.effectiveFeePercent}% of retail
-            </span>
           </div>
+          <span className="text-[11px] font-semibold text-slate-300">
+            {feeDetails.effectiveFeePercent}% of total buyer payment
+          </span>
         </div>
 
-        {/* Profit & COGS Assessment */}
-        {feeDetails.hasCogs ? (
-          <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-2">
-            <div className="flex items-center justify-between text-xs">
-              <div className="flex items-center gap-2">
-                <span className="font-semibold text-slate-900">Calculated Profit Margin:</span>
+        {/* Take-Home Net Payout & Profit Summary */}
+        <div className="p-5 rounded-xl bg-white border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-6">
+          {/* Left: Etsy Net Payout */}
+          <div className="space-y-1.5">
+            <span className="text-xs font-bold text-slate-500 uppercase tracking-wider">
+              Etsy Net Bank Deposit
+            </span>
+            <div className="font-heading text-2xl sm:text-3xl font-bold text-slate-900">
+              {sym}{feeDetails.netPayout.toFixed(2)}
+            </div>
+            <p className="text-xs text-slate-500 leading-relaxed max-w-sm">
+              Deposited into your bank account after all Etsy commission and payment fees are deducted.
+            </p>
+          </div>
+
+          {/* Right: Seller Net Take-Home Profit */}
+          <div className="md:border-l md:border-slate-200 md:pl-6 space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-bold text-slate-800 uppercase tracking-wider">
+                Seller Net Take-Home Profit
+              </span>
+              {feeDetails.hasCogs && feeDetails.profitMarginPercent !== null && (
                 <span
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold border ${
+                  className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
                     feeDetails.marginHealth === "healthy"
                       ? "bg-emerald-50 text-emerald-700 border-emerald-200"
                       : feeDetails.marginHealth === "moderate"
                       ? "bg-blue-50 text-blue-700 border-blue-200"
-                      : "bg-amber-50 text-amber-700 border-amber-200"
+                      : feeDetails.marginHealth === "tight"
+                      ? "bg-amber-50 text-amber-700 border-amber-200"
+                      : "bg-red-50 text-red-700 border-red-200"
                   }`}
                 >
                   {feeDetails.profitMarginPercent}% Margin ({feeDetails.marginHealth.toUpperCase()})
                 </span>
-              </div>
-              <span className="font-mono text-xs text-slate-500">
-                COGS: {sym}{(feeDetails.cogs || 0).toFixed(2)} • Fees: {sym}{feeDetails.totalFees.toFixed(2)}
-              </span>
-            </div>
-
-            <div className="w-full h-2 bg-slate-100 rounded-full overflow-hidden">
-              <div
-                className={`h-full transition-all duration-300 rounded-full ${
-                  feeDetails.marginHealth === "healthy"
-                    ? "bg-emerald-600"
-                    : feeDetails.marginHealth === "moderate"
-                    ? "bg-blue-600"
-                    : "bg-amber-500"
-                }`}
-                style={{ width: `${Math.min(100, Math.max(5, feeDetails.profitMarginPercent || 0))}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-slate-500">
-              {feeDetails.marginHealth === "healthy" && "Healthy margin with room for Etsy Ads, coupon promotions, and free shipping guarantees."}
-              {feeDetails.marginHealth === "moderate" && "Sustainable production margin for custom and handmade small-batch production."}
-              {feeDetails.marginHealth === "tight" && "Tight margin. Consider reducing packaging/materials cost or positioning closer to Upper Range."}
-            </p>
-          </div>
-        ) : (
-          <div className="p-3.5 rounded-lg bg-amber-50/70 border border-amber-200 flex items-start gap-2.5 text-xs text-amber-800">
-            <AlertCircle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-            <div>
-              <span className="font-semibold block">Cost of Goods Sold (COGS) not entered</span>
-              <span>Enter your materials and labor cost in the field above to calculate exact net profit and margin health. We never guess your production costs.</span>
-            </div>
-          </div>
-        )}
-
-        {/* Take-Home Net Payout Summary Banner */}
-        <div className="p-5 rounded-lg bg-white border border-slate-200 flex flex-col md:flex-row md:items-center justify-between gap-5">
-          <div className="space-y-1">
-            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
-              Etsy Net Payout
-            </span>
-            <div className="text-2xl sm:text-3xl font-bold font-mono text-slate-900">
-              {sym}{feeDetails.netPayout.toFixed(2)}
-            </div>
-            <p className="text-xs text-slate-500">
-              Deposited to your bank account after all Etsy commission and payment fees are deducted.
-            </p>
-          </div>
-
-          <div className="md:border-l md:border-slate-200 md:pl-6 space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                Seller Net Take-Home Profit
-              </span>
-              {feeDetails.hasCogs && feeDetails.profitMarginPercent !== null && (
-                <span className="px-2 py-0.5 rounded bg-emerald-50 text-emerald-700 font-mono font-bold text-xs">
-                  {feeDetails.profitMarginPercent}% Margin
-                </span>
               )}
             </div>
 
-            <div className="text-2xl sm:text-3xl font-bold font-mono text-emerald-600">
+            <div className="font-heading text-2xl sm:text-3xl font-bold text-emerald-600">
               {feeDetails.hasCogs && feeDetails.netProfit !== null
                 ? `${sym}${feeDetails.netProfit.toFixed(2)}`
                 : "Enter COGS"}
@@ -542,14 +796,30 @@ export function PricingCalculator({
 
             <div className="text-xs text-slate-500">
               {feeDetails.hasCogs && feeDetails.netProfit !== null ? (
-                <>
-                  <span>At 25 orders/month: </span>
-                  <strong className="text-slate-900 font-mono">
-                    +{sym}{(feeDetails.netProfit * 25).toFixed(2)} net profit
-                  </strong>
-                </>
+                <div className="space-y-1">
+                  <div>
+                    <span>At 25 sales/month: </span>
+                    <strong className="text-slate-900 font-mono">
+                      +{sym}{(feeDetails.netProfit * 25).toFixed(2)} net profit
+                    </strong>
+                  </div>
+                  <div className="w-48 h-1.5 bg-slate-100 rounded-full overflow-hidden mt-1">
+                    <div
+                      className={`h-full transition-all duration-300 rounded-full ${
+                        feeDetails.marginHealth === "healthy"
+                          ? "bg-emerald-600"
+                          : feeDetails.marginHealth === "moderate"
+                          ? "bg-blue-600"
+                          : feeDetails.marginHealth === "tight"
+                          ? "bg-amber-500"
+                          : "bg-red-500"
+                      }`}
+                      style={{ width: `${Math.min(100, Math.max(5, feeDetails.profitMarginPercent || 0))}%` }}
+                    />
+                  </div>
+                </div>
               ) : (
-                <span>Requires materials cost above to calculate take-home profit.</span>
+                <span>Requires production/materials cost in the field above to calculate true take-home profit.</span>
               )}
             </div>
           </div>

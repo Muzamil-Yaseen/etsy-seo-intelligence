@@ -43,7 +43,7 @@ export function DataDetailsDrawer({
               <Database className="w-4 h-4" />
             </div>
             <div>
-              <h3 className="font-bold text-sm tracking-tight text-white">
+              <h3 className="font-heading font-bold text-sm tracking-tight text-white">
                 Data Sources
               </h3>
               <p className="text-[11px] text-slate-400">
@@ -162,7 +162,7 @@ export function DataDetailsDrawer({
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 bg-slate-900 hover:bg-slate-800 text-white rounded-lg text-xs font-semibold transition cursor-pointer"
+            className="px-4 py-2 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold transition cursor-pointer border border-black"
           >
             Done
           </button>

@@ -9,9 +9,12 @@ export interface GroqListingInput {
   dimensions?: string;
   personalizationDetails?: string;
   competitorPhrases: string[];
+  competitorTags?: string[];
+  competitorPrices?: string[];
   careInstructions?: string;
   forbiddenClaims?: string[];
   isDigital?: boolean;
+  userApiKey?: string;
 }
 
 export interface GroqListingOutput {
@@ -20,27 +23,41 @@ export interface GroqListingOutput {
     giftFocused: string;
     featureFocused: string;
   };
+  optimizedTags13: string[];
   deepDescription: string;
   openingHook: string;
   faqs: Array<{ question: string; answer: string }>;
   photoStrategy: Array<{ slot: number; title: string; guidance: string }>;
+  competitiveSummary?: string;
   isAiGenerated: boolean;
 }
 
 /**
- * Calls Groq AI to generate deep, high-converting listing reasoning grounded strictly in confirmed ProductFacts.
+ * Calls Groq AI to generate deep, high-converting listing reasoning grounded strictly in confirmed ProductFacts and competitor benchmarking.
  */
 export async function generateGroqListingIntelligence(
   input: GroqListingInput
 ): Promise<GroqListingOutput | null> {
-  const apiKey = process.env.GROQ_API_KEY;
+  const apiKey = input.userApiKey?.trim() || process.env.GROQ_API_KEY;
   if (!apiKey) return null;
 
   const categoryPlan = getCategoryMediaPlan(input.category || input.productNoun);
 
   try {
-    const prompt = `You are a world-class Etsy SEO and conversion copywriting expert.
-Generate high-converting listing copy and buyer reassurance assets for this specific handcrafted product:
+    const competitorSection = [
+      input.competitorPhrases?.length
+        ? `- Top Competitor Listing Titles:\n${input.competitorPhrases.slice(0, 5).map((t, i) => `  ${i + 1}. ${t}`).join("\n")}`
+        : "",
+      input.competitorTags?.length
+        ? `- Observed Competitor Keyword Tags (${input.competitorTags.length} keywords):\n  ${input.competitorTags.slice(0, 30).join(", ")}`
+        : "",
+      input.competitorPrices?.length
+        ? `- Competitor Price Benchmark Range: ${input.competitorPrices.slice(0, 5).map(p => `$${p}`).join(", ")}`
+        : "",
+    ].filter(Boolean).join("\n");
+
+    const prompt = `You are a world-class Etsy SEO algorithm and conversion copywriting expert.
+Generate the ultimate high-converting, highly SEO-optimized Etsy listing that outranks and outperforms these benchmarked competitors:
 
 --- CONFIRMED PRODUCT FACTS (GROUND TRUTH) ---
 - Core Search Phrase: ${input.mainBroadPhrase}
@@ -52,14 +69,17 @@ Generate high-converting listing copy and buyer reassurance assets for this spec
 - Target Recipient: ${input.recipient || "Handmade art & craftsmanship enthusiasts"}
 - Specific Dimensions: ${input.dimensions || "Not specified by seller"}
 - Forbidden Claims: ${(input.forbiddenClaims || []).join(", ") || "None specified"}
-- Competitor Phrases Observed in Market: ${input.competitorPhrases.slice(0, 8).join(" | ") || "Handcrafted artisan design"}
+
+--- OBSERVED COMPETITOR BENCHMARK DATA ---
+${competitorSection || "- No competitor listings provided (using clean artisan baseline)"}
 
 --- STRICT COMPLIANCE RULES ---
 1. NEVER invent unconfirmed materials or certifications. If materials state Ceramic, DO NOT mention leather, wood, or sterling silver.
 2. If personalization is NOT offered, NEVER include words like "personalized", "monogrammed", or "custom engraved".
 3. If delivery type is Digital, do NOT describe physical shipping packaging; describe digital download compatibility instead.
 4. DO NOT use emojis anywhere in titles or descriptions.
-5. All 3 title variations MUST be under 140 characters and under 15 words. Lead with front-loaded physical traits.
+5. All 3 title variations MUST be under 140 characters and under 15 words. Lead with front-loaded physical traits and high-volume competitor search phrases.
+6. The "optimizedTags13" MUST contain EXACTLY 13 tags. CRITICAL: Every single tag MUST BE under or equal to 20 characters (<= 20 chars). Use multi-word long-tail intent derived from the top competitor keywords.
 
 Return ONLY a valid JSON object matching this exact structure:
 {
@@ -68,17 +88,33 @@ Return ONLY a valid JSON object matching this exact structure:
     "giftFocused": "Occasion or gift recipient focused under 140 chars",
     "featureFocused": "Detailed materials and technique under 140 chars"
   },
+  "optimizedTags13": [
+    "tag 1 under 20 chars",
+    "tag 2 under 20 chars",
+    "tag 3 under 20 chars",
+    "tag 4 under 20 chars",
+    "tag 5 under 20 chars",
+    "tag 6 under 20 chars",
+    "tag 7 under 20 chars",
+    "tag 8 under 20 chars",
+    "tag 9 under 20 chars",
+    "tag 10 under 20 chars",
+    "tag 11 under 20 chars",
+    "tag 12 under 20 chars",
+    "tag 13 under 20 chars"
+  ],
   "openingHook": "1-2 compelling sentences focusing on the confirmed craftsmanship and materials",
-  "deepDescription": "Complete, beautifully structured Etsy listing description formatted specifically for Etsy. Use uppercase section headers (e.g. OVERVIEW, SPECIFICATIONS, MATERIALS & BUILD, CARE GUIDELINES, DISPATCH & POLICIES) and clean bullet points (•) with generous line breaks.",
+  "deepDescription": "Complete, beautifully structured Etsy listing description formatted specifically for Etsy. Use uppercase section headers (e.g. OVERVIEW, SPECIFICATIONS, MATERIALS & BUILD, CARE GUIDELINES, SHIPPING & POLICIES) and clean bullet points (•) with generous line breaks.",
   "faqs": [
     { "question": "Clear buyer question regarding dispatch or material", "answer": "Helpful, reassuring answer" },
     { "question": "Clear buyer question regarding sizing or specs", "answer": "Helpful, reassuring answer" },
     { "question": "Clear buyer question regarding care or maintenance", "answer": "Helpful, reassuring answer" }
-  ]
+  ],
+  "competitiveSummary": "1-2 sentences summarizing how this listing combines the best competitor keyword patterns into a higher-converting product listing."
 }`;
 
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 9000);
+    const timeoutId = setTimeout(() => controller.abort(), 14000);
 
     const res = await fetch("https://api.groq.com/openai/v1/chat/completions", {
       method: "POST",
@@ -89,7 +125,7 @@ Return ONLY a valid JSON object matching this exact structure:
       signal: controller.signal,
       body: JSON.stringify({
         model: "openai/gpt-oss-120b",
-        max_tokens: 1500,
+        max_tokens: 1800,
         response_format: { type: "json_object" },
         messages: [
           {
@@ -117,6 +153,16 @@ Return ONLY a valid JSON object matching this exact structure:
     if (!content) return null;
 
     const parsed = JSON.parse(content);
+
+    // Validate and enforce <= 20 chars on Groq tags
+    const rawAiTags: string[] = Array.isArray(parsed.optimizedTags13)
+      ? parsed.optimizedTags13
+      : [];
+    const validAiTags = rawAiTags
+      .map((t) => (typeof t === "string" ? t.trim().toLowerCase() : ""))
+      .filter((t) => t.length >= 2 && t.length <= 20)
+      .slice(0, 13);
+
     return {
       titleVariations: {
         recommended2026:
@@ -129,6 +175,7 @@ Return ONLY a valid JSON object matching this exact structure:
           parsed.titleVariations?.featureFocused ||
           `Artisan ${input.productNoun} with ${input.materials}`.slice(0, 138),
       },
+      optimizedTags13: validAiTags,
       openingHook:
         parsed.openingHook ||
         `Handcrafted with meticulous attention to detail, this ${input.mainBroadPhrase} is made to last.`,
@@ -152,6 +199,7 @@ Return ONLY a valid JSON object matching this exact structure:
         title: s.title,
         guidance: s.guidance,
       })),
+      competitiveSummary: parsed.competitiveSummary || "Synthesized from live competitor benchmark data for optimal conversion and Etsy search ranking.",
       isAiGenerated: true,
     };
   } catch (err) {

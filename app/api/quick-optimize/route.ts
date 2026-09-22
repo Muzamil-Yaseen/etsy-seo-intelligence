@@ -6,7 +6,7 @@ import { calculateProductRelevance } from "@/lib/scoring/relevance";
 import { calculateBuyerIntent } from "@/lib/scoring/intent";
 import { calculateOpportunityScore } from "@/lib/scoring/opportunity";
 import { calculateConfidenceScore } from "@/lib/scoring/confidence";
-import { optimizeEtsyTags } from "@/lib/optimizers/tag-optimizer";
+import { optimizeEtsyTags, validateEtsyTag } from "@/lib/optimizers/tag-optimizer";
 import { validateEtsyTitle, generateCompliantTitle } from "@/lib/optimizers/title-optimizer";
 import { generateGroqListingIntelligence } from "@/lib/ai/groq-service";
 import { ProductFacts } from "@/lib/product-facts/types";
@@ -75,6 +75,7 @@ const QuickOptimizeRequestSchema = z.object({
   url2: z.string().optional(),
   url3: z.string().optional(),
   customNotes: z.string().optional(),
+  groqApiKey: z.string().optional(),
 });
 
 interface ParsedCompetitorItem {
@@ -470,22 +471,17 @@ export async function POST(request: Request) {
       });
     }
 
-    // 6. 13-Tag Optimization (<= 20 chars, diverse clusters)
-    const tagResult = optimizeEtsyTags(tagCandidates, 13);
+    // 6. Extract Competitor Benchmark Data (Titles, Tags, Prices)
+    const competitorPhrases = competitors.map((c) => c.title);
+    const competitorTags = Array.from(new Set(competitors.flatMap((c) => c.tags || []))).filter(Boolean);
+    const competitorPrices = competitors
+      .map((c) => (c.price !== null ? c.price.toFixed(2) : null))
+      .filter((p): p is string => Boolean(p));
 
-    // 7. Deterministic Base Title
-    const baseTitle = generateCompliantTitle({
-      productNoun: confirmedNoun,
-      primaryMaterial: confirmedMaterials ? confirmedMaterials.split(/[,/]/)[0].trim() : undefined,
-      personalizationType: userFacts.personalization?.isOffered ? "Custom" : undefined,
-      recipient: userFacts.targetAudience,
-    });
-    const titleValidation = validateEtsyTitle(baseTitle, rawQuery, confirmedNoun);
-
-    // 8. Category-Tailored Media Strategy
+    // 7. Category-Tailored Media Strategy
     const categoryMediaPlan = getCategoryMediaPlan(confirmedCategory || confirmedNoun);
 
-    // 9. Call Grounded Groq AI Copywriter
+    // 8. Call Grounded Groq AI Copywriter with Competitor Benchmarks
     const aiIntelligence = await generateGroqListingIntelligence({
       mainBroadPhrase: rawQuery,
       productNoun: confirmedNoun,
@@ -498,11 +494,48 @@ export async function POST(request: Request) {
       personalizationDetails: userFacts.personalization?.isOffered
         ? userFacts.personalization.instructions || "Personalized upon request"
         : undefined,
-      competitorPhrases: competitors.map((c) => c.title),
+      competitorPhrases,
+      competitorTags,
+      competitorPrices,
       careInstructions: confirmedCare,
       forbiddenClaims: userFacts.forbiddenClaims,
       isDigital: userFacts.productType === "digital",
+      userApiKey: data.groqApiKey,
     });
+
+    // 9. Prioritize & Inject High-Converting Groq AI Tags into Candidate Pool
+    if (aiIntelligence?.optimizedTags13 && aiIntelligence.optimizedTags13.length > 0) {
+      for (const rawTag of aiIntelligence.optimizedTags13) {
+        const val = validateEtsyTag(rawTag);
+        if (val.isValid) {
+          const norm = normalizeKeyword(rawTag);
+          if (!tagCandidates.some((c) => c.keyword.toLowerCase() === norm.displayText.toLowerCase())) {
+            tagCandidates.unshift({
+              keyword: norm.displayText,
+              cluster: "ai_differentiator",
+              opportunityScore: 99,
+              relevanceScore: 98,
+              intentScore: 96,
+              demandScore: 94,
+              intentType: "TRANSACTIONAL",
+              isContradictory: false,
+            });
+          }
+        }
+      }
+    }
+
+    // 10. 13-Tag Optimization (<= 20 chars, diverse clusters)
+    const tagResult = optimizeEtsyTags(tagCandidates, 13);
+
+    // 11. Deterministic Base Title
+    const baseTitle = generateCompliantTitle({
+      productNoun: confirmedNoun,
+      primaryMaterial: confirmedMaterials ? confirmedMaterials.split(/[,/]/)[0].trim() : undefined,
+      personalizationType: userFacts.personalization?.isOffered ? "Custom" : undefined,
+      recipient: userFacts.targetAudience,
+    });
+    const titleValidation = validateEtsyTitle(baseTitle, rawQuery, confirmedNoun);
 
     const recommendedTitle = aiIntelligence?.titleVariations?.recommended2026 || baseTitle;
     const titleGift = aiIntelligence?.titleVariations?.giftFocused || `Handmade ${confirmedNoun} - Artisan Gift`;
@@ -619,6 +652,7 @@ export async function POST(request: Request) {
       claimValidation,
       topKeywords: scoredKeywords.filter((k) => !k.isContradictory),
       avoidKeywords: scoredKeywords.filter((k) => k.isContradictory || k.relevanceScore < 40).slice(0, 6),
+      competitiveSummary: aiIntelligence?.competitiveSummary || "",
       isAiEnhanced: Boolean(aiIntelligence?.isAiGenerated),
     });
   } catch (err: any) {

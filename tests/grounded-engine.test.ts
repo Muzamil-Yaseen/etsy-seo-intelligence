@@ -1,7 +1,12 @@
 import { describe, it, expect } from "vitest";
 import { validateListingClaims } from "../lib/product-facts/validator";
 import { ProductFacts } from "../lib/product-facts/types";
-import { calculatePriceQuartiles, calculateEtsyFees } from "../lib/fees/etsy-fees";
+import {
+  calculatePriceQuartiles,
+  calculateEtsyFees,
+  calculateTargetPriceFromMargin,
+  calculateTargetPriceFromProfit,
+} from "../lib/fees/etsy-fees";
 import { getCategoryMediaPlan } from "../lib/media/category-media-plan";
 import { evaluateListingReadiness } from "../lib/analyzers/listing-analyzer";
 
@@ -88,14 +93,75 @@ describe("Grounded Intelligence Engine & Product Facts Shield", () => {
       expect(quartiles?.isSufficient).toBe(true);
     });
 
-    it("requires at least 5 competitor prices before computing quartiles", () => {
-      const scarcePrices = [32.0, 45.0, 50.0];
-      const quartiles = calculatePriceQuartiles(scarcePrices, "USD");
+    it("computes accurate benchmarks for 1, 2, or 3 competitor prices", () => {
+      // 1 competitor
+      const single = calculatePriceQuartiles([35.0], "USD");
+      expect(single?.sampleSize).toBe(1);
+      expect(single?.isSufficient).toBe(true);
+      expect(single?.marketMedian).toBe(35.0);
 
-      expect(quartiles).not.toBeNull();
-      expect(quartiles?.sampleSize).toBe(3);
-      expect(quartiles?.isSufficient).toBe(false);
-      expect(quartiles?.message).toContain("Insufficient market data");
+      // 2 competitors
+      const pair = calculatePriceQuartiles([30.0, 50.0], "USD");
+      expect(pair?.sampleSize).toBe(2);
+      expect(pair?.isSufficient).toBe(true);
+      expect(pair?.marketMin).toBe(30.0);
+      expect(pair?.marketMax).toBe(50.0);
+      expect(pair?.marketMedian).toBe(40.0);
+
+      // 3 competitors
+      const trio = calculatePriceQuartiles([30.0, 45.0, 60.0], "USD");
+      expect(trio?.sampleSize).toBe(3);
+      expect(trio?.isSufficient).toBe(true);
+      expect(trio?.marketMin).toBe(30.0);
+      expect(trio?.marketMedian).toBe(45.0);
+      expect(trio?.marketMax).toBe(60.0);
+    });
+
+    it("matches CheckoutPage 2026 reference calculation cases", () => {
+      // US $100 sale, $0 shipping -> $9.95 total Etsy fee ($0.20 + $6.50 + $3.25), $90.05 net payout
+      const case1 = calculateEtsyFees(100.0, undefined, "US");
+      expect(case1.listingFee).toBe(0.20);
+      expect(case1.transactionFee).toBe(6.50);
+      expect(case1.paymentFee).toBe(3.25);
+      expect(case1.totalFees).toBe(9.95);
+      expect(case1.netPayout).toBe(90.05);
+      expect(case1.effectiveFeePercent).toBe(9.95);
+
+      // US $100 sale with 15% Offsite Ads tier -> $24.95 total fees
+      const case2 = calculateEtsyFees(100.0, undefined, "US", { offsiteAdsTier: "under10k" });
+      expect(case2.offsiteAdsFee).toBe(15.00);
+      expect(case2.totalFees).toBe(24.95);
+      expect(case2.netPayout).toBe(75.05);
+
+      // US $80 item with $20 shipping charged -> identical $9.95 fee (proves shipping is included in commission)
+      const case3 = calculateEtsyFees(80.0, undefined, "US", { shippingCharged: 20.0 });
+      expect(case3.totalBuyerPays).toBe(100.0);
+      expect(case3.transactionFee).toBe(6.50);
+      expect(case3.paymentFee).toBe(3.25);
+      expect(case3.totalFees).toBe(9.95);
+      expect(case3.netPayout).toBe(90.05);
+
+      // US $100 sale with $30 materials and $5 shipping cost -> $55.05 net profit (55.05% margin)
+      const case4 = calculateEtsyFees(100.0, 30.0, "US", { shippingCost: 5.0 });
+      expect(case4.totalSellerCosts).toBe(35.0);
+      expect(case4.netProfit).toBe(55.05);
+      expect(case4.profitMarginPercent).toBe(55.05);
+      expect(case4.marginHealth).toBe("healthy");
+    });
+
+    it("calculates reverse target price for desired profit margin", () => {
+      // With $20 COGS, $5 shipping cost, and 50% target margin in US
+      const targetPrice = calculateTargetPriceFromMargin({
+        targetMarginPercent: 50,
+        cogs: 20,
+        shippingCost: 5,
+        region: "US",
+      });
+
+      expect(targetPrice).toBeGreaterThan(50);
+      // Verify calculated price achieves ~50% margin
+      const check = calculateEtsyFees(targetPrice, 20, "US", { shippingCost: 5 });
+      expect(check.profitMarginPercent).toBeCloseTo(50, 0);
     });
 
     it("calculates exact US fees and flags missing COGS without guessing", () => {
@@ -204,18 +270,34 @@ describe("Grounded Intelligence Engine & Product Facts Shield", () => {
       expect(report.summary).toContain("12 of 12 checks complete");
     });
 
-    it("marks pricing check as cannot_evaluate when competitorCount is under 5", () => {
+    it("marks pricing check as cannot_evaluate when competitorCount is 0", () => {
       const report = evaluateListingReadiness({
         title: "Ceramic Matcha Bowl Handcrafted in Stoneware Clay Japanese Tea Chawan",
         leadKeyword: "ceramic matcha bowl",
         tags: ["ceramic matcha bowl", "stoneware tea bowl"],
-        competitorCount: 2,
+        competitorCount: 0,
       });
 
       const priceCheck = report.checks.find((c) => c.id === "price_market_range");
       expect(priceCheck?.status).toBe("cannot_evaluate");
-      expect(priceCheck?.recommendation).toContain("Insufficient market data");
+      expect(priceCheck?.recommendation).toContain("Add 1 to 3 competitor listings");
       expect(report.cannotEvaluateCount).toBeGreaterThan(0);
+    });
+
+    it("evaluates pricing check as complete when 1-3 competitors are benchmarked with aligned price", () => {
+      const report = evaluateListingReadiness({
+        title: "Ceramic Matcha Bowl Handcrafted in Stoneware Clay Japanese Tea Chawan",
+        leadKeyword: "ceramic matcha bowl",
+        tags: ["ceramic matcha bowl", "stoneware tea bowl"],
+        competitorCount: 3,
+        targetPrice: 42.0,
+        marketMin: 30.0,
+        marketMax: 60.0,
+      });
+
+      const priceCheck = report.checks.find((c) => c.id === "price_market_range");
+      expect(priceCheck?.status).toBe("complete");
+      expect(priceCheck?.label).toContain("Pricing aligned with competitor benchmarks");
     });
 
     it("accurately reports remaining tag slots without contradicting itself", () => {

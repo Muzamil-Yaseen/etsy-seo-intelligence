@@ -199,7 +199,7 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-bold font-['Plus_Jakarta_Sans'] text-white">
+                  <h3 className="text-base sm:text-lg font-bold font-heading text-white">
                     Saved History
                   </h3>
                   <span className="px-2 py-0.5 rounded-full bg-[#059669] text-white text-xs font-bold font-mono">
@@ -248,7 +248,7 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-[#0F172A] text-sm sm:text-base capitalize font-['Plus_Jakarta_Sans']">
+                          <span className="font-bold text-[#0F172A] text-sm sm:text-base capitalize font-heading">
                             {item.productNoun || "Product Listing"}
                           </span>
                           {item.grade && (

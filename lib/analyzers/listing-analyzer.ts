@@ -231,26 +231,30 @@ export function evaluateListingReadiness(params: {
     },
     {
       id: "price_market_range",
-      label: compCount < 5
+      label: compCount === 0
         ? "Competitive pricing benchmark"
         : params.targetPrice !== undefined &&
           params.targetPrice > 0 &&
-          (params.marketMin === undefined || params.targetPrice >= params.marketMin * 0.8) &&
-          (params.marketMax === undefined || params.targetPrice <= params.marketMax * 1.5)
-        ? "Pricing aligned with market benchmarks"
-        : "Pricing outside expected market benchmarks",
-      status: compCount < 5
+          (params.marketMin === undefined || params.targetPrice >= params.marketMin * 0.7) &&
+          (params.marketMax === undefined || params.targetPrice <= params.marketMax * 1.6)
+        ? "Pricing aligned with competitor benchmarks"
+        : params.targetPrice !== undefined && params.targetPrice > 0
+        ? "Pricing outside competitor benchmark range"
+        : "Target retail price not set",
+      status: compCount === 0
         ? "cannot_evaluate"
         : params.targetPrice !== undefined &&
           params.targetPrice > 0 &&
-          (params.marketMin === undefined || params.targetPrice >= params.marketMin * 0.8) &&
-          (params.marketMax === undefined || params.targetPrice <= params.marketMax * 1.5)
+          (params.marketMin === undefined || params.targetPrice >= params.marketMin * 0.7) &&
+          (params.marketMax === undefined || params.targetPrice <= params.marketMax * 1.6)
         ? "complete"
         : "needs_attention",
       category: "pricing",
-      recommendation: compCount < 5
-        ? `Insufficient market data to evaluate pricing (${compCount} competitor listing${compCount === 1 ? "" : "s"} found; at least 5 required).`
-        : "Position retail price within or close to competitor median.",
+      recommendation: compCount === 0
+        ? "Add 1 to 3 competitor listings to benchmark pricing against active market competitors."
+        : params.targetPrice === undefined || params.targetPrice <= 0
+        ? "Set your retail listing price in the pricing calculator."
+        : "Position retail price within or close to the competitor median sweet spot.",
     },
     {
       id: "material_specified",
