@@ -492,38 +492,177 @@
   }
 
   // ==========================================
-  // 4. REAL-TIME CROSS-TAB QUEUE SYNCHRONIZATION
+  // 4. REAL-TIME CROSS-TAB QUEUE SYNCHRONIZATION & MANAGEMENT
   // ==========================================
+  var currentQueue = [];
+  var isPopoverOpen = false;
+
+  function ensureQueuePopover(dock) {
+    var pop = document.getElementById('ei-queue-popover');
+    if (!pop && dock) {
+      pop = document.createElement('div');
+      pop.id = 'ei-queue-popover';
+      pop.style.display = 'none';
+      dock.appendChild(pop);
+    }
+    return pop;
+  }
+
+  function renderQueuePopover(queue) {
+    var dock = document.getElementById('etsy-intel-dock');
+    if (!dock) return;
+    var pop = ensureQueuePopover(dock);
+    if (!pop) return;
+
+    var q = Array.isArray(queue) ? queue : currentQueue;
+    var count = q.length;
+
+    var html = '<div class="ei-popover-header">'
+      + '<span>🎯 Competitor Queue (' + count + '/3)</span>'
+      + '<button class="ei-btn-close" id="ei-popover-close" style="padding:0 4px;font-size:12px;">✕</button>'
+      + '</div>';
+
+    html += '<div class="ei-popover-items">';
+    if (count === 0) {
+      html += '<div class="ei-popover-empty">No competitors saved yet.<br/>Click "🎯 Add as Competitor" on any Etsy listing.</div>';
+    } else {
+      q.forEach(function(item, idx) {
+        var thumb = item.imageUrl || (item.images && item.images[0]) || '';
+        var title = item.title || 'Competitor #' + (idx + 1);
+        var price = item.price ? ('$' + item.price + ' ' + (item.currency || 'USD')) : '';
+        var shop = item.shopName || 'Etsy Shop';
+        var tagsCount = (item.tags || []).length;
+
+        html += '<div class="ei-popover-item">'
+          + (thumb ? '<img class="ei-popover-thumb" src="' + thumb + '" alt="Thumbnail" />' : '<div class="ei-popover-thumb" style="display:flex;align-items:center;justify-content:center;font-size:10px;color:#71717a;">#' + (idx + 1) + '</div>')
+          + '<div class="ei-popover-info">'
+          + '<div class="ei-popover-title" title="' + title.replace(/"/g, '&quot;') + '">#' + (idx + 1) + ': ' + title + '</div>'
+          + '<div class="ei-popover-sub">' + (price ? (price + ' · ') : '') + shop + ' · ' + tagsCount + ' tags</div>'
+          + '</div>'
+          + '<button class="ei-popover-remove" data-remove-index="' + idx + '" title="Remove #' + (idx + 1) + ' from queue">✕</button>'
+          + '</div>';
+      });
+    }
+    html += '</div>';
+
+    if (count > 0) {
+      html += '<div class="ei-popover-footer">'
+        + '<button class="ei-btn-danger" id="ei-popover-clear" style="padding:5px 10px;font-size:11px;"><span>🗑️ Clear All</span></button>'
+        + '<button class="ei-btn-primary" id="ei-popover-analyze" style="background:#10b981;color:#000000;padding:5px 11px;font-size:11px;font-weight:700;"><span>🚀 Analyze in Studio ↗</span></button>'
+        + '</div>';
+    }
+
+    pop.innerHTML = html;
+
+    // Attach popover events
+    var closeBtn = document.getElementById('ei-popover-close');
+    if (closeBtn) {
+      closeBtn.onclick = function(e) {
+        e.stopPropagation();
+        pop.style.display = 'none';
+        isPopoverOpen = false;
+      };
+    }
+
+    pop.querySelectorAll('.ei-popover-remove').forEach(function(rBtn) {
+      rBtn.onclick = function(e) {
+        e.stopPropagation();
+        var index = parseInt(this.getAttribute('data-remove-index'), 10);
+        this.innerText = '...';
+        chrome.runtime.sendMessage({ action: 'remove_from_competitor_queue', index: index }, function() {
+          syncQueueState();
+        });
+      };
+    });
+
+    var popClear = document.getElementById('ei-popover-clear');
+    if (popClear) {
+      popClear.onclick = function(e) {
+        e.stopPropagation();
+        popClear.innerText = 'Clearing...';
+        chrome.runtime.sendMessage({ action: 'clear_competitor_queue' }, function() {
+          pop.style.display = 'none';
+          isPopoverOpen = false;
+          syncQueueState();
+        });
+      };
+    }
+
+    var popAnalyze = document.getElementById('ei-popover-analyze');
+    if (popAnalyze) {
+      popAnalyze.onclick = function(e) {
+        e.stopPropagation();
+        popAnalyze.innerText = 'Opening...';
+        chrome.runtime.sendMessage({ action: 'analyze_competitor_queue' }, function() {
+          setTimeout(function() {
+            pop.style.display = 'none';
+            isPopoverOpen = false;
+            syncQueueState();
+          }, 1500);
+        });
+      };
+    }
+  }
+
+  function toggleQueuePopover() {
+    var dock = document.getElementById('etsy-intel-dock');
+    if (!dock) return;
+    var pop = ensureQueuePopover(dock);
+    if (!pop) return;
+
+    if (pop.style.display === 'none' || !pop.style.display) {
+      renderQueuePopover(currentQueue);
+      pop.style.display = 'flex';
+      isPopoverOpen = true;
+    } else {
+      pop.style.display = 'none';
+      isPopoverOpen = false;
+    }
+  }
+
+  function hideQueuePopover() {
+    var pop = document.getElementById('ei-queue-popover');
+    if (pop) {
+      pop.style.display = 'none';
+      isPopoverOpen = false;
+    }
+  }
+
   function syncQueueState(givenQueue) {
     var btn = document.getElementById('ei-btn-add-comp');
     var analyzeBtn = document.getElementById('ei-btn-analyze-comp');
+    var clearBtn = document.getElementById('ei-btn-clear-queue');
     if (!btn && !analyzeBtn) return;
 
     function applyState(q) {
       var queue = Array.isArray(q) ? q : [];
+      currentQueue = queue;
       var count = queue.length;
       var curData = extractListingData();
       var isSaved = queue.some(function(c) {
         return (c.listingId && curData.listingId && String(c.listingId) === String(curData.listingId)) ||
-               (c.url && curData.url && c.url === curData.url);
+               (c.url && curData.url && (c.url === curData.url || c.url.split('?')[0] === curData.url.split('?')[0]));
       });
 
       if (btn) {
         if (isSaved) {
-          btn.innerHTML = '<span>✓ Saved in Queue (' + count + '/3)</span>';
+          btn.innerHTML = '<span>✓ Saved (' + count + '/3) · ✕ Remove</span>';
           btn.style.background = 'rgba(16, 185, 129, 0.2)';
-          btn.style.borderColor = 'rgba(16, 185, 129, 0.4)';
+          btn.style.borderColor = 'rgba(16, 185, 129, 0.45)';
           btn.style.color = '#34d399';
+          btn.title = 'Listing is saved in competitor queue. Click to remove it!';
         } else if (count >= 3) {
-          btn.innerHTML = '<span>Queue Full (3/3)</span>';
-          btn.style.background = 'rgba(255, 255, 255, 0.1)';
-          btn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
-          btn.style.color = '#a1a1aa';
+          btn.innerHTML = '<span>Queue Full (3/3) ▾</span>';
+          btn.style.background = 'rgba(245, 158, 11, 0.15)';
+          btn.style.borderColor = 'rgba(245, 158, 11, 0.35)';
+          btn.style.color = '#fbbf24';
+          btn.title = 'Queue is full (3/3). Click to view competitors, remove listings, or clear queue.';
         } else {
           btn.innerHTML = '<span>🎯 Add as Competitor (' + count + '/3)</span>';
           btn.style.background = 'rgba(255, 255, 255, 0.1)';
           btn.style.borderColor = 'rgba(255, 255, 255, 0.15)';
           btn.style.color = '#ffffff';
+          btn.title = 'Add this listing to your competitor queue';
         }
       }
 
@@ -534,6 +673,19 @@
         } else {
           analyzeBtn.style.display = 'none';
         }
+      }
+
+      if (clearBtn) {
+        if (count > 0) {
+          clearBtn.style.display = 'inline-flex';
+          clearBtn.innerHTML = '<span>🗑️ Clear (' + count + ')</span>';
+        } else {
+          clearBtn.style.display = 'none';
+        }
+      }
+
+      if (isPopoverOpen) {
+        renderQueuePopover(queue);
       }
     }
 
@@ -620,6 +772,7 @@
         + '<button class="ei-btn-primary" id="ei-btn-open"><span>⚡ Open in Studio ↗</span></button>'
         + '<button class="ei-btn-secondary" id="ei-btn-add-comp"><span>🎯 Add as Competitor (0/3)</span></button>'
         + '<button class="ei-btn-primary" id="ei-btn-analyze-comp" style="display:none;background:#10b981;color:#000000;font-weight:700;"><span>🚀 Analyze Competitors ↗</span></button>'
+        + '<button class="ei-btn-danger" id="ei-btn-clear-queue" style="display:none;" title="Clear all competitor listings from queue"><span>🗑️ Clear</span></button>'
         + '<button class="ei-btn-secondary" id="ei-btn-copy-all"><span>📋 Copy All</span></button>'
         + '<button class="ei-btn-secondary" id="ei-btn-copy-tags"><span>🏷️ Tags (' + data.tags.length + ')</span></button>'
         + '<button class="ei-btn-secondary" id="ei-btn-copy-images"><span>🖼️ Photos (' + data.images.length + ')</span></button>'
@@ -657,24 +810,59 @@
       if (addCompBtn) {
         addCompBtn.onclick = function() {
           var latest = extractListingData();
-          var btn = this;
-          btn.innerHTML = '<span>Saving...</span>';
+          var curQueue = currentQueue || [];
+          var isSaved = curQueue.some(function(c) {
+            return (c.listingId && latest.listingId && String(c.listingId) === String(latest.listingId)) ||
+                   (c.url && latest.url && (c.url === latest.url || c.url.split('?')[0] === latest.url.split('?')[0]));
+          });
+
+          if (isSaved) {
+            // Remove current listing from queue
+            addCompBtn.innerHTML = '<span>Removing...</span>';
+            chrome.runtime.sendMessage({
+              action: 'remove_from_competitor_queue',
+              listingId: latest.listingId,
+              url: latest.url
+            }, function() {
+              addCompBtn.innerHTML = '<span>✕ Removed</span>';
+              setTimeout(syncQueueState, 400);
+            });
+            return;
+          }
+
+          if (curQueue.length >= 3) {
+            // Queue full: toggle popover so user can remove an item or clear!
+            toggleQueuePopover();
+            return;
+          }
+
+          // Add to queue
+          addCompBtn.innerHTML = '<span>Saving...</span>';
           chrome.runtime.sendMessage({ action: 'add_to_competitor_queue', data: latest }, function(resp) {
             if (resp && resp.added) {
-              btn.innerHTML = '<span>✓ Saved Competitor #' + resp.count + ' (' + resp.count + '/3)</span>';
-              var analyzeBtn = document.getElementById('ei-btn-analyze-comp');
-              if (analyzeBtn) {
-                analyzeBtn.style.display = 'inline-flex';
-                analyzeBtn.innerHTML = '<span>🚀 Analyze (' + resp.count + '/3) in Studio ↗</span>';
-              }
+              addCompBtn.innerHTML = '<span>✓ Saved Competitor #' + resp.count + ' (' + resp.count + '/3)</span>';
             } else if (resp && resp.alreadyExists) {
-              btn.innerHTML = '<span>✓ Already in Queue (' + resp.count + '/3)</span>';
+              addCompBtn.innerHTML = '<span>✓ Already in Queue</span>';
             } else if (resp && resp.limitReached) {
-              btn.innerHTML = '<span>⚠️ Max 3 Saved! Click Analyze ↗</span>';
+              addCompBtn.innerHTML = '<span>Queue Full (3/3) ▾</span>';
+              toggleQueuePopover();
             } else {
-              btn.innerHTML = '<span>🎯 Add as Competitor</span>';
+              addCompBtn.innerHTML = '<span>🎯 Add as Competitor</span>';
             }
-            setTimeout(syncQueueState, 2000);
+            setTimeout(syncQueueState, 1000);
+          });
+        };
+      }
+
+      var clearQueueBtn = document.getElementById('ei-btn-clear-queue');
+      if (clearQueueBtn) {
+        clearQueueBtn.onclick = function() {
+          var btn = this;
+          btn.innerHTML = '<span>Clearing...</span>';
+          chrome.runtime.sendMessage({ action: 'clear_competitor_queue' }, function() {
+            btn.innerHTML = '<span>✓ Cleared!</span>';
+            hideQueuePopover();
+            setTimeout(syncQueueState, 400);
           });
         };
       }
@@ -691,6 +879,15 @@
           });
         };
       }
+
+      // Close popover when clicking outside the dock
+      document.addEventListener('click', function(e) {
+        var pop = document.getElementById('ei-queue-popover');
+        var d = document.getElementById('etsy-intel-dock');
+        if (pop && pop.style.display !== 'none' && d && !d.contains(e.target)) {
+          hideQueuePopover();
+        }
+      });
 
       document.getElementById('ei-btn-copy-all').onclick = function() {
         var latest = extractListingData();

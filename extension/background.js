@@ -163,12 +163,18 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   if (msg.action === 'remove_from_competitor_queue') {
     chrome.storage.local.get(['competitorQueue'], (res) => {
       let queue = Array.isArray(res.competitorQueue) ? [...res.competitorQueue] : [];
-      if (typeof msg.index === 'number') {
+      if (typeof msg.index === 'number' && msg.index >= 0 && msg.index < queue.length) {
         queue.splice(msg.index, 1);
-      } else if (msg.listingId) {
-        queue = queue.filter((c) => String(c.listingId) !== String(msg.listingId));
-      } else if (msg.url) {
-        queue = queue.filter((c) => c.url !== msg.url);
+      } else if (msg.listingId || msg.url) {
+        queue = queue.filter((c) => {
+          if (msg.listingId && c.listingId && String(c.listingId) === String(msg.listingId)) return false;
+          if (msg.url && c.url) {
+            const clean1 = c.url.split('?')[0].replace(/\/+$/, '');
+            const clean2 = msg.url.split('?')[0].replace(/\/+$/, '');
+            if (clean1 === clean2) return false;
+          }
+          return true;
+        });
       }
       chrome.storage.local.set({ competitorQueue: queue }, () => {
         updateBadge(queue.length);

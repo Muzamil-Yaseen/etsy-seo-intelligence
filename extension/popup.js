@@ -146,14 +146,20 @@ document.addEventListener('DOMContentLoaded', () => {
       if (btnAddCompetitor && activeData) {
         const isSaved = queue.some((c) =>
           (c.listingId && activeData.listingId && String(c.listingId) === String(activeData.listingId)) ||
-          (c.url && activeData.url && c.url === activeData.url)
+          (c.url && activeData.url && (c.url === activeData.url || c.url.split('?')[0] === activeData.url.split('?')[0]))
         );
         if (isSaved) {
-          btnAddCompetitor.innerText = `✓ Saved in Queue (${count}/3)`;
+          btnAddCompetitor.innerText = `✓ Saved in Queue (${count}/3) · Click to Remove`;
+          btnAddCompetitor.style.color = '#34d399';
+          btnAddCompetitor.style.borderColor = 'rgba(52, 211, 153, 0.4)';
         } else if (count >= 3) {
           btnAddCompetitor.innerText = 'Queue Full (3/3) - Analyze ↗';
+          btnAddCompetitor.style.color = '#fbbf24';
+          btnAddCompetitor.style.borderColor = 'rgba(251, 191, 36, 0.4)';
         } else {
           btnAddCompetitor.innerText = `🎯 Add as Competitor (${count}/3)`;
+          btnAddCompetitor.style.color = '';
+          btnAddCompetitor.style.borderColor = '';
         }
       }
     });
@@ -162,8 +168,11 @@ document.addEventListener('DOMContentLoaded', () => {
   // Clear all competitors in queue
   if (btnClearQueue) {
     btnClearQueue.onclick = () => {
+      btnClearQueue.innerText = 'Clearing...';
       chrome.runtime.sendMessage({ action: 'clear_competitor_queue' }, () => {
+        btnClearQueue.innerText = '✓ Cleared!';
         renderQueue();
+        setTimeout(() => { btnClearQueue.innerText = 'Clear all'; }, 1500);
       });
     };
   }
@@ -225,7 +234,27 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (btnAddCompetitor) {
         btnAddCompetitor.onclick = () => {
-          if (activeData) {
+          if (!activeData) return;
+          chrome.runtime.sendMessage({ action: 'get_competitor_queue' }, (qRes) => {
+            const queue = (qRes && Array.isArray(qRes.queue)) ? qRes.queue : [];
+            const isSaved = queue.some((c) =>
+              (c.listingId && activeData.listingId && String(c.listingId) === String(activeData.listingId)) ||
+              (c.url && activeData.url && (c.url === activeData.url || c.url.split('?')[0] === activeData.url.split('?')[0]))
+            );
+
+            if (isSaved) {
+              btnAddCompetitor.innerText = 'Removing...';
+              chrome.runtime.sendMessage({
+                action: 'remove_from_competitor_queue',
+                listingId: activeData.listingId,
+                url: activeData.url
+              }, () => {
+                flashBtn(btnAddCompetitor, '✕ Removed from Queue');
+                renderQueue();
+              });
+              return;
+            }
+
             btnAddCompetitor.innerText = 'Saving...';
             chrome.runtime.sendMessage({ action: 'add_to_competitor_queue', data: activeData }, (resp) => {
               if (resp && resp.added) {
@@ -237,7 +266,7 @@ document.addEventListener('DOMContentLoaded', () => {
               }
               renderQueue();
             });
-          }
+          });
         };
       }
 
