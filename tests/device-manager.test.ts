@@ -74,7 +74,7 @@ describe("Device & App Management Service", () => {
     it("is not expired before 1st December 2026", () => {
       // 1st December 2026 is in the future
       const validity = getSecretValidityInfo();
-      expect(validity.formattedExpiry).toContain("December 1, 2026");
+      expect(validity.formattedExpiry).toMatch(/Dec(ember)? 1, 2026/);
       expect(validity.secret).toBe("MuzamilTheKing");
       expect(validity.isExpired).toBe(false);
       expect(validity.daysRemaining).toBeGreaterThan(0);

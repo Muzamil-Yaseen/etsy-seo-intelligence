@@ -125,6 +125,15 @@ export function saveAdminSettings(settings: Partial<AdminSettings>): AdminSettin
   if (typeof window !== "undefined") {
     try {
       localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(updated));
+      if (settings.appSecret) {
+        localStorage.setItem("etsy_custom_app_secret", settings.appSecret.trim());
+      }
+      if (settings.appSecretExpiry) {
+        const time = new Date(settings.appSecretExpiry).getTime();
+        if (!isNaN(time) && time > 0) {
+          localStorage.setItem("etsy_custom_app_secret_expiry", String(time));
+        }
+      }
       window.dispatchEvent(new CustomEvent("admin-settings-changed", { detail: updated }));
     } catch {}
   }
@@ -138,6 +147,8 @@ export function resetAdminSettings(): AdminSettings {
   if (typeof window !== "undefined") {
     try {
       localStorage.removeItem(SETTINGS_STORAGE_KEY);
+      localStorage.removeItem("etsy_custom_app_secret");
+      localStorage.removeItem("etsy_custom_app_secret_expiry");
       window.dispatchEvent(
         new CustomEvent("admin-settings-changed", { detail: DEFAULT_ADMIN_SETTINGS })
       );

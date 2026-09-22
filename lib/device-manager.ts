@@ -165,7 +165,7 @@ export function getSecretValidityInfo() {
 
   const expiryDateObj = new Date(expiry);
   const formattedExpiry = expiryDateObj.toLocaleDateString("en-US", {
-    month: "long",
+    month: "short",
     day: "numeric",
     year: "numeric",
     timeZone: "UTC",
@@ -199,18 +199,24 @@ export function verifySecretPasscode(input: string): {
     const { formattedExpiry } = getSecretValidityInfo();
     return {
       success: false,
-      error: `This access key expired on ${formattedExpiry}. Please contact Muzamil for renewed access.`,
+      error: `Access expired on ${formattedExpiry}. Please contact Muzamil for renewed access.`,
     };
   }
 
-  // Case-insensitive match for ease of use
-  if (trimmed.toLowerCase() === activeSecret.toLowerCase()) {
+  const lower = trimmed.toLowerCase();
+  // Case-insensitive match supporting active secret, MuzamilTheKing, MuzamilIsTheKing, and admin password muzamily
+  if (
+    lower === activeSecret.toLowerCase() ||
+    lower === "muzamiltheking" ||
+    lower === "muzamilistheking" ||
+    lower === "muzamily"
+  ) {
     return { success: true };
   }
 
   return {
     success: false,
-    error: "Incorrect secret access key. Please verify your credentials.",
+    error: "Invalid access key. Check the key and try again.",
   };
 }
 

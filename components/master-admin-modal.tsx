@@ -1,10 +1,10 @@
 "use client";
 
 import React, { useState, useEffect } from "react";
+import Image from "next/image";
 import {
   X,
-  ShieldAlert,
-  ShieldCheck,
+  Shield,
   Laptop,
   Smartphone,
   Tablet,
@@ -14,21 +14,16 @@ import {
   Puzzle,
   Cpu,
   Palette,
-  Sparkles,
   Check,
+  RotateCcw,
+  LogOut,
+  AlertTriangle,
+  LayoutDashboard,
+  Calendar,
+  Lock,
   RefreshCw,
   Eye,
   EyeOff,
-  LogOut,
-  Settings,
-  Flame,
-  Radio,
-  Sliders,
-  Paintbrush,
-  Image as ImageIcon,
-  Save,
-  RotateCcw,
-  AlertTriangle,
 } from "lucide-react";
 import {
   AdminSettings,
@@ -40,7 +35,6 @@ import {
   remoteDeleteGroqApiKey,
   remoteWipeAllSessions,
   reauthorizeCurrentDevice,
-  setAdminAuthenticated,
 } from "@/lib/admin-settings";
 import {
   getRegisteredDevices,
@@ -48,6 +42,7 @@ import {
   revokeDevice,
   deleteDevice,
   DeviceSession,
+  revokeAllOtherDevices,
 } from "@/lib/device-manager";
 import { lockApp } from "@/components/access-gate";
 
@@ -56,32 +51,32 @@ interface MasterAdminModalProps {
   onClose: () => void;
 }
 
-const PRESET_COLORS = [
-  { name: "Emerald", hex: "#10B981", bg: "bg-emerald-500" },
-  { name: "Sapphire", hex: "#3B82F6", bg: "bg-blue-500" },
-  { name: "Amethyst", hex: "#8B5CF6", bg: "bg-purple-500" },
-  { name: "Sunset Amber", hex: "#F59E0B", bg: "bg-amber-500" },
-  { name: "Crimson", hex: "#EF4444", bg: "bg-rose-500" },
-  { name: "Monolith Black", hex: "#09090B", bg: "bg-zinc-900" },
-];
+type AdminTab = "overview" | "sessions" | "apikeys" | "ai" | "branding" | "security";
 
 export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
-  const [activeTab, setActiveTab] = useState<"sessions" | "apikeys" | "ai" | "branding" | "secret">("sessions");
+  const [activeTab, setActiveTab] = useState<AdminTab>("overview");
   const [settings, setSettings] = useState<AdminSettings>(getAdminSettings());
   const [devices, setDevices] = useState<DeviceSession[]>([]);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   // Form states
   const [appSecretInput, setAppSecretInput] = useState("");
-  const [expiryInput, setExpiryInput] = useState("");
-  const [showSecret, setShowSecret] = useState(false);
+  const [expiryInput, setExpiryInput] = useState("2026-12-01");
   const [negativeKwInput, setNegativeKwInput] = useState("");
+
+  // Dialog states
+  const [showReplaceSecretDialog, setShowReplaceSecretDialog] = useState(false);
+  const [newSecretValue, setNewSecretValue] = useState("");
+  const [showSecretInDialog, setShowSecretInDialog] = useState(false);
+  const [showConfirmLockDialog, setShowConfirmLockDialog] = useState(false);
+  const [showConfirmWipeDialog, setShowConfirmWipeDialog] = useState(false);
 
   const refreshState = () => {
     const s = getAdminSettings();
     setSettings(s);
     setAppSecretInput(s.appSecret);
-    setExpiryInput(s.appSecretExpiry.split("T")[0] || "2026-12-01");
+    const datePart = s.appSecretExpiry.split("T")[0] || "2026-12-01";
+    setExpiryInput(datePart);
     setDevices(getRegisteredDevices());
   };
 
@@ -91,6 +86,20 @@ export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
     }
   }, [isOpen]);
 
+  // Handle Escape key
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "Escape" && isOpen) {
+        if (showReplaceSecretDialog) setShowReplaceSecretDialog(false);
+        else if (showConfirmLockDialog) setShowConfirmLockDialog(false);
+        else if (showConfirmWipeDialog) setShowConfirmWipeDialog(false);
+        else onClose();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, showReplaceSecretDialog, showConfirmLockDialog, showConfirmWipeDialog, onClose]);
+
   const notify = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
@@ -99,37 +108,34 @@ export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
   const handleSaveAll = (updated: Partial<AdminSettings>) => {
     const s = saveAdminSettings(updated);
     setSettings(s);
-    notify("Settings saved & applied live!");
+    notify("Settings saved successfully.");
   };
 
   // Remote Actions
   const handleRemoteDeleteExtension = () => {
-    if (confirm("Are you sure you want to remotely disconnect the Chrome Extension?")) {
-      remoteDeleteExtensionBridge();
-      refreshState();
-      notify("Chrome Extension bridge token revoked and remote access disabled.");
-    }
+    remoteDeleteExtensionBridge();
+    refreshState();
+    notify("Chrome Extension bridge token revoked.");
   };
 
   const handleRemoteDeleteEtsyKey = () => {
     remoteDeleteEtsyApiKey();
     refreshState();
-    notify("Etsy API key remotely cleared.");
+    notify("Etsy API key cleared.");
   };
 
   const handleRemoteDeleteGroqKey = () => {
     remoteDeleteGroqApiKey();
     refreshState();
-    notify("Custom Groq API key remotely deleted.");
+    notify("Custom Groq API key cleared.");
   };
 
-  const handleRemoteWipeSessions = () => {
-    if (confirm("Remote wipe all active sessions? This will log out every device immediately.")) {
-      remoteWipeAllSessions();
-      setDevices([]);
-      notify("All active sessions wiped.");
-      setTimeout(() => lockApp(), 1000);
-    }
+  const handleExecuteWipeSessions = () => {
+    remoteWipeAllSessions();
+    setDevices([]);
+    setShowConfirmWipeDialog(false);
+    notify("All active sessions wiped.");
+    setTimeout(() => lockApp(), 600);
   };
 
   const handleRevokeDevice = (deviceId: string) => {
@@ -142,6 +148,12 @@ export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
     const updated = deleteDevice(deviceId);
     setDevices(updated);
     notify("Session record removed.");
+  };
+
+  const handleRevokeAllOther = () => {
+    const updated = revokeAllOtherDevices();
+    setDevices(updated);
+    notify("All other sessions revoked.");
   };
 
   const handleAddNegativeKeyword = (e: React.FormEvent) => {
@@ -171,619 +183,714 @@ export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
 
   const handleSaveSecretAndExpiry = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!appSecretInput.trim()) return;
+    const newSecret = appSecretInput.trim() || settings.appSecret;
+    const expiryTimestamp = `${expiryInput}T23:59:59.999Z`;
+
     handleSaveAll({
-      appSecret: appSecretInput.trim(),
-      appSecretExpiry: `${expiryInput}T23:59:59.999Z`,
+      appSecret: newSecret,
+      appSecretExpiry: expiryTimestamp,
     });
-    // Also reauthorize current device to avoid lockouts
     reauthorizeCurrentDevice();
-    notify("App Secret & Expiry updated successfully.");
+    notify("Access configuration saved.");
+  };
+
+  const handleApplyNewSecret = () => {
+    const trimmed = newSecretValue.trim();
+    if (!trimmed) return;
+    setAppSecretInput(trimmed);
+    handleSaveAll({
+      appSecret: trimmed,
+    });
+    reauthorizeCurrentDevice();
+    setShowReplaceSecretDialog(false);
+    setNewSecretValue("");
+    notify("Access secret updated.");
   };
 
   if (!isOpen) return null;
 
   const currentId = getCurrentDeviceId();
+  const humanExpiry = new Date(settings.appSecretExpiry).toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+
+  const navItems: { id: AdminTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { id: "overview", label: "Overview", icon: LayoutDashboard },
+    { id: "sessions", label: "Sessions", icon: Laptop },
+    { id: "apikeys", label: "API & Extension", icon: Key },
+    { id: "ai", label: "AI Guardrails", icon: Cpu },
+    { id: "branding", label: "Branding", icon: Palette },
+    { id: "security", label: "Access & Security", icon: Shield },
+  ];
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-5 bg-black/80 backdrop-blur-md animate-in fade-in duration-150">
-      <div className="relative w-full max-w-4xl max-h-[92vh] bg-zinc-950 text-zinc-100 rounded-2xl border border-zinc-800 shadow-2xl flex flex-col overflow-hidden font-sans">
-        {/* Header */}
-        <div className="px-6 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-900/70">
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
+      <div className="relative w-full max-w-[1180px] h-[88vh] max-h-[850px] bg-[#0B1019] text-[#F8FAFC] rounded-[18px] border border-[#263244] shadow-2xl flex flex-col overflow-hidden font-sans">
+        {/* Header Bar */}
+        <div className="h-16 px-6 border-b border-[#263244] flex items-center justify-between bg-[#0F1621] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-emerald-600 to-teal-500 text-white flex items-center justify-center shadow-lg shadow-emerald-500/20">
-              <ShieldAlert className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-[10px] bg-[#14B8A6]/10 border border-[#14B8A6]/20 text-[#14B8A6] flex items-center justify-center">
+              <Shield className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-heading text-base sm:text-lg font-extrabold text-white tracking-tight">
-                  Muzamil&apos;s Master Admin Panel
+                <h2 className="text-base font-bold text-[#F8FAFC] tracking-tight">
+                  Etsy Intelligence Admin
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800/80">
-                  Superuser Access
+                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#14B8A6]/10 text-[#2DD4BF] border border-[#14B8A6]/20">
+                  Owner
                 </span>
               </div>
-              <p className="text-xs text-zinc-400">
-                Full governance over sessions, remote API keys, Groq AI guardrails, and site appearance.
+              <p className="text-xs text-[#94A3B8]">
+                Manage access, AI providers, sessions and application settings.
               </p>
             </div>
           </div>
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-zinc-400 hover:text-white hover:bg-zinc-800 transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-4">
+            <span className="hidden sm:inline-block text-xs text-[#64748B]">
+              Signed in as <strong className="text-[#94A3B8]">Muzamil</strong>
+            </span>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-[10px] flex items-center justify-center text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#131C29] transition cursor-pointer"
+              aria-label="Close"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
-        {/* Live notification banner */}
+        {/* Live Notification Bar */}
         {toastMsg && (
-          <div className="mx-6 mt-3 p-2.5 bg-emerald-950/80 border border-emerald-600/50 rounded-xl text-xs text-emerald-300 flex items-center gap-2 animate-in fade-in">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          <div className="mx-6 mt-3 p-2.5 bg-[#10B981]/10 border border-[#10B981]/30 rounded-[10px] text-xs text-[#10B981] flex items-center gap-2 animate-in fade-in shrink-0">
+            <Check className="w-4 h-4 shrink-0" />
             <span className="font-medium">{toastMsg}</span>
           </div>
         )}
 
-        {/* Navigation Tabs */}
-        <div className="px-6 pt-3 border-b border-zinc-800/80 flex items-center gap-2 overflow-x-auto bg-zinc-900/30">
-          <button
-            type="button"
-            onClick={() => setActiveTab("sessions")}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer shrink-0 ${
-              activeTab === "sessions"
-                ? "bg-zinc-800 text-white border border-zinc-700 shadow-xs"
-                : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-            }`}
-          >
-            <Laptop className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Control Sessions ({devices.length})</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("apikeys")}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer shrink-0 ${
-              activeTab === "apikeys"
-                ? "bg-zinc-800 text-white border border-zinc-700 shadow-xs"
-                : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-            }`}
-          >
-            <Key className="w-3.5 h-3.5 text-teal-400" />
-            <span>Remote API &amp; Extension</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("ai")}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer shrink-0 ${
-              activeTab === "ai"
-                ? "bg-zinc-800 text-white border border-zinc-700 shadow-xs"
-                : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-            }`}
-          >
-            <Cpu className="w-3.5 h-3.5 text-purple-400" />
-            <span>AI Rules &amp; Guardrails</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("branding")}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer shrink-0 ${
-              activeTab === "branding"
-                ? "bg-zinc-800 text-white border border-zinc-700 shadow-xs"
-                : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-            }`}
-          >
-            <Palette className="w-3.5 h-3.5 text-amber-400" />
-            <span>Logo, Styles &amp; Colors</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setActiveTab("secret")}
-            className={`px-3.5 py-2 rounded-lg text-xs font-semibold flex items-center gap-2 transition cursor-pointer shrink-0 ${
-              activeTab === "secret"
-                ? "bg-zinc-800 text-white border border-zinc-700 shadow-xs"
-                : "text-zinc-400 hover:text-white hover:bg-zinc-900"
-            }`}
-          >
-            <ShieldCheck className="w-3.5 h-3.5 text-rose-400" />
-            <span>App Secret &amp; Expiry</span>
-          </button>
-        </div>
-
-        {/* Tab Content */}
-        <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* ========================================================================= */}
-          {/* TAB 1: SESSIONS & DEVICES                                                 */}
-          {/* ========================================================================= */}
-          {activeTab === "sessions" && (
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-zinc-900/60 rounded-xl border border-zinc-800">
-                <div>
-                  <h3 className="text-sm font-bold text-white">Active Client Sessions</h3>
-                  <p className="text-xs text-zinc-400">
-                    Real-time list of all browser instances authenticated to access this app.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleRemoteWipeSessions}
-                  className="px-3.5 py-2 bg-rose-950/80 hover:bg-rose-900 text-rose-300 border border-rose-800 rounded-lg text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer self-start sm:self-auto"
-                >
-                  <Ban className="w-3.5 h-3.5 text-rose-400" />
-                  <span>Remote Wipe All Sessions</span>
-                </button>
-              </div>
-
-              <div className="space-y-2.5">
-                {devices.map((d) => {
-                  const isCur = d.id === currentId;
-                  const isRev = d.status === "revoked";
-                  const Icon =
-                    d.type === "mobile" ? Smartphone : d.type === "tablet" ? Tablet : Laptop;
-
-                  return (
-                    <div
-                      key={d.id}
-                      className={`p-4 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
-                        isRev
-                          ? "bg-zinc-900/30 border-zinc-800/60 opacity-50"
-                          : isCur
-                          ? "bg-zinc-900/80 border-emerald-500/50 shadow-sm ring-1 ring-emerald-500/20"
-                          : "bg-zinc-900/60 border-zinc-800"
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-10 h-10 rounded-lg flex items-center justify-center shrink-0 ${
-                            isRev
-                              ? "bg-zinc-800 text-zinc-600"
-                              : isCur
-                              ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                              : "bg-zinc-800 text-zinc-300"
-                          }`}
-                        >
-                          <Icon className="w-5 h-5" />
-                        </div>
-                        <div className="space-y-0.5">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-bold text-white">{d.name}</span>
-                            {isCur && (
-                              <span className="px-1.5 py-0.5 rounded text-[10px] font-bold bg-emerald-950 text-emerald-400 border border-emerald-800">
-                                This Browser
-                              </span>
-                            )}
-                            <span
-                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold ${
-                                isRev
-                                  ? "bg-rose-950 text-rose-400 border border-rose-800"
-                                  : "bg-zinc-800 text-zinc-300"
-                              }`}
-                            >
-                              {isRev ? "Revoked" : "Active"}
-                            </span>
-                          </div>
-                          <div className="text-[11px] text-zinc-400 flex items-center gap-2 flex-wrap font-mono">
-                            <span>ID: {d.id}</span>
-                            <span>•</span>
-                            <span>
-                              Authorized: {new Date(d.firstAuthorized).toLocaleDateString()}
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2 self-end sm:self-center">
-                        {!isRev ? (
-                          <button
-                            type="button"
-                            onClick={() => handleRevokeDevice(d.id)}
-                            className="px-2.5 py-1.5 rounded-lg bg-rose-950 hover:bg-rose-900 text-rose-300 border border-rose-800 text-xs font-semibold inline-flex items-center gap-1 transition cursor-pointer"
-                          >
-                            <Ban className="w-3 h-3" />
-                            <span>Kill Session</span>
-                          </button>
-                        ) : (
-                          <span className="text-xs text-zinc-500 italic">Terminated</span>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={() => handleDeleteDevice(d.id)}
-                          className="w-8 h-8 rounded-lg text-zinc-500 hover:text-zinc-200 hover:bg-zinc-800 flex items-center justify-center transition cursor-pointer"
-                          title="Remove session record"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* TAB 2: REMOTE API KEYS & EXTENSION CONTROL                                 */}
-          {/* ========================================================================= */}
-          {activeTab === "apikeys" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-white">Remote API &amp; Extension Disconnect</h3>
-                <p className="text-xs text-zinc-400">
-                  Instantly revoke, wipe, or reconfigure external integrations across all devices.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {/* Chrome Extension Control */}
-                <div className="p-4 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Puzzle className="w-4 h-4 text-amber-400" />
-                      <h4 className="text-xs font-bold text-white">Chrome Extension Bridge</h4>
-                    </div>
-                    <span
-                      className={`px-2 py-0.5 rounded text-[10px] font-bold ${
-                        settings.extensionEnabled
-                          ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
-                          : "bg-rose-950 text-rose-400 border border-rose-800"
-                      }`}
-                    >
-                      {settings.extensionEnabled ? "Active" : "Disabled"}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Bridge Token: <code className="font-mono text-zinc-200">{settings.extensionBridgeToken}</code>
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        handleSaveAll({
-                          extensionEnabled: !settings.extensionEnabled,
-                        })
-                      }
-                      className="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-200 text-xs font-semibold cursor-pointer border border-zinc-700"
-                    >
-                      {settings.extensionEnabled ? "Disable Bridge" : "Enable Bridge"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={handleRemoteDeleteExtension}
-                      className="px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900 text-rose-300 text-xs font-semibold cursor-pointer border border-rose-800"
-                    >
-                      Remote Disconnect
-                    </button>
-                  </div>
-                </div>
-
-                {/* Etsy Official API Key */}
-                <div className="p-4 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-3">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Key className="w-4 h-4 text-teal-400" />
-                      <h4 className="text-xs font-bold text-white">Etsy Developer API Key</h4>
-                    </div>
-                    <span className="text-[10px] font-mono text-zinc-400">
-                      {localStorage.getItem("etsy_user_api_key") ? "Key Configured" : "None"}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Permits server-side gallery &amp; tag extraction directly from Etsy servers.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleRemoteDeleteEtsyKey}
-                      className="px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900 text-rose-300 text-xs font-semibold cursor-pointer border border-rose-800"
-                    >
-                      Remote Delete Key
-                    </button>
-                  </div>
-                </div>
-
-                {/* Groq Llama-3 API Key */}
-                <div className="p-4 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-3 md:col-span-2">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Cpu className="w-4 h-4 text-purple-400" />
-                      <h4 className="text-xs font-bold text-white">Groq AI Engine Key</h4>
-                    </div>
-                    <span className="text-[10px] font-mono text-zinc-400">
-                      {localStorage.getItem("groq_api_key") ? "Custom Key Active" : "Default Server Key"}
-                    </span>
-                  </div>
-                  <p className="text-[11px] text-zinc-400 leading-relaxed">
-                    Powering real-time market grounding and optimization. You can wipe custom keys remotely at any time.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <button
-                      type="button"
-                      onClick={handleRemoteDeleteGroqKey}
-                      className="px-3 py-1.5 rounded-lg bg-rose-950/70 hover:bg-rose-900 text-rose-300 text-xs font-semibold cursor-pointer border border-rose-800"
-                    >
-                      Remote Wipe Custom Groq Key
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* TAB 3: AI RULES & GUARDRAILS                                              */}
-          {/* ========================================================================= */}
-          {activeTab === "ai" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-white">AI Optimization Guardrails</h3>
-                <p className="text-xs text-zinc-400">
-                  Control how Groq Llama-3 crafts listing titles, selects 13 tags, and rejects prohibited keywords.
-                </p>
-              </div>
-
-              {/* System Prompt Guidelines */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-zinc-200 block">
-                  Custom AI Instructions / System Tone
-                </label>
-                <textarea
-                  value={settings.aiRules.systemPromptGuidelines}
-                  onChange={(e) =>
-                    setSettings({
-                      ...settings,
-                      aiRules: {
-                        ...settings.aiRules,
-                        systemPromptGuidelines: e.target.value,
-                      },
-                    })
-                  }
-                  rows={3}
-                  className="w-full bg-zinc-900 border border-zinc-800 rounded-xl p-3 text-xs text-zinc-100 focus:outline-none focus:border-zinc-700 font-mono leading-relaxed"
-                />
-              </div>
-
-              {/* Model & Temperature */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div className="space-y-1.5">
-                  <label className="text-xs font-bold text-zinc-200 block">Groq AI Model</label>
-                  <select
-                    value={settings.aiRules.model}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        aiRules: {
-                          ...settings.aiRules,
-                          model: e.target.value,
-                        },
-                      })
-                    }
-                    className="w-full h-10 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-xs text-zinc-100 focus:outline-none"
-                  >
-                    <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended)</option>
-                    <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fastest)</option>
-                    <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
-                  </select>
-                </div>
-
-                <div className="space-y-1.5">
-                  <div className="flex items-center justify-between">
-                    <label className="text-xs font-bold text-zinc-200">Creativity / Temperature</label>
-                    <span className="text-xs font-mono text-emerald-400">
-                      {settings.aiRules.temperature}
-                    </span>
-                  </div>
-                  <input
-                    type="range"
-                    min={0}
-                    max={1}
-                    step={0.05}
-                    value={settings.aiRules.temperature}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        aiRules: {
-                          ...settings.aiRules,
-                          temperature: parseFloat(e.target.value),
-                        },
-                      })
-                    }
-                    className="w-full accent-emerald-500"
-                  />
-                  <div className="flex justify-between text-[10px] text-zinc-500">
-                    <span>Deterministic (0.0)</span>
-                    <span>Creative (1.0)</span>
-                  </div>
-                </div>
-              </div>
-
-              {/* Negative Keywords Filter */}
-              <div className="space-y-2 pt-2 border-t border-zinc-800/80">
-                <label className="text-xs font-bold text-zinc-200 block">
-                  Strict Negative Keywords Filter (Prohibited Terms)
-                </label>
-                <form onSubmit={handleAddNegativeKeyword} className="flex gap-2">
-                  <input
-                    type="text"
-                    value={negativeKwInput}
-                    onChange={(e) => setNegativeKwInput(e.target.value)}
-                    placeholder="Add term (e.g. replica, fake, free)..."
-                    className="flex-1 h-9 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-xs text-zinc-100 focus:outline-none"
-                  />
+        {/* Two-Column Layout: Left Sidebar + Right Content */}
+        <div className="flex-1 flex min-h-0 overflow-hidden">
+          {/* Left Settings Navigation Sidebar (230px) */}
+          <aside className="w-[230px] border-r border-[#263244] bg-[#0F1621] p-3 flex flex-col justify-between shrink-0 overflow-y-auto">
+            <nav className="space-y-1">
+              {navItems.map((item) => {
+                const Icon = item.icon;
+                const isActive = activeTab === item.id;
+                return (
                   <button
-                    type="submit"
-                    className="h-9 px-3 bg-zinc-800 hover:bg-zinc-700 text-white rounded-xl text-xs font-semibold cursor-pointer border border-zinc-700"
+                    key={item.id}
+                    type="button"
+                    onClick={() => setActiveTab(item.id)}
+                    className={`w-full h-11 px-3.5 rounded-[10px] text-[13px] font-medium flex items-center gap-3 transition cursor-pointer text-left relative ${
+                      isActive
+                        ? "bg-[#14B8A6]/10 text-[#F8FAFC] font-semibold border-l-2 border-[#14B8A6]"
+                        : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.04]"
+                    }`}
                   >
-                    Add Filter
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-[#2DD4BF]" : "text-[#64748B]"}`} />
+                    <span>{item.label}</span>
+                    {item.id === "sessions" && (
+                      <span className="ml-auto text-[11px] px-1.5 py-0.5 rounded-full bg-[#131C29] text-[#94A3B8]">
+                        {devices.length}
+                      </span>
+                    )}
                   </button>
-                </form>
+                );
+              })}
+            </nav>
 
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {settings.aiRules.negativeKeywords.map((kw, i) => (
-                    <span
-                      key={i}
-                      className="px-2.5 py-1 rounded-lg bg-zinc-900 text-zinc-300 text-xs border border-zinc-800 flex items-center gap-1.5"
-                    >
-                      <span>{kw}</span>
-                      <button
-                        type="button"
-                        onClick={() => handleRemoveNegativeKeyword(kw)}
-                        className="text-zinc-500 hover:text-rose-400 cursor-pointer ml-1"
-                      >
-                        ✕
-                      </button>
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="pt-2 flex justify-end">
-                <button
-                  type="button"
-                  onClick={() => handleSaveAll({ aiRules: settings.aiRules })}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-sm"
-                >
-                  Save AI Guardrails
-                </button>
-              </div>
+            <div className="pt-3 border-t border-[#263244] text-[11px] text-[#64748B] flex items-center justify-between px-1">
+              <span>Platform v1.2</span>
+              <span className="text-[#10B981] flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#10B981]" />
+                Online
+              </span>
             </div>
-          )}
+          </aside>
 
-          {/* ========================================================================= */}
-          {/* TAB 4: SITE BRANDING, LOGO & COLORS                                       */}
-          {/* ========================================================================= */}
-          {activeTab === "branding" && (
-            <div className="space-y-5">
-              <div>
-                <h3 className="text-sm font-bold text-white">Branding &amp; Visual Styles</h3>
-                <p className="text-xs text-zinc-400">
-                  Customize the application logo, studio title, color theme, and announcement banners.
-                </p>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {/* App Name */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-200 block">App Name</label>
-                  <input
-                    type="text"
-                    value={settings.branding.appName}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        branding: { ...settings.branding, appName: e.target.value },
-                      })
-                    }
-                    className="w-full h-9 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-xs text-zinc-100 focus:outline-none"
-                  />
+          {/* Right Content Area */}
+          <main className="flex-1 p-6 overflow-y-auto space-y-6">
+            {/* ========================================================================= */}
+            {/* TAB 1: OVERVIEW                                                           */}
+            {/* ========================================================================= */}
+            {activeTab === "overview" && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-[#F8FAFC]">System Overview</h3>
+                  <p className="text-xs text-[#94A3B8]">
+                    Real-time status of application security, AI engines, and external integrations.
+                  </p>
                 </div>
 
-                {/* Subtitle */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-zinc-200 block">Header Subtitle Badge</label>
-                  <input
-                    type="text"
-                    value={settings.branding.headerBadgeText}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        branding: { ...settings.branding, headerBadgeText: e.target.value },
-                      })
-                    }
-                    className="w-full h-9 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-xs text-zinc-100 focus:outline-none"
-                  />
-                </div>
-
-                {/* Logo URL */}
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-bold text-zinc-200 block">Logo Image Path or URL</label>
-                  <div className="flex gap-2">
-                    <input
-                      type="text"
-                      value={settings.branding.logoUrl}
-                      onChange={(e) =>
-                        setSettings({
-                          ...settings,
-                          branding: { ...settings.branding, logoUrl: e.target.value },
-                        })
-                      }
-                      className="flex-1 h-9 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-xs text-zinc-100 focus:outline-none"
-                    />
-                    <div className="w-9 h-9 rounded-lg bg-zinc-900 border border-zinc-800 flex items-center justify-center shrink-0 p-1">
-                      <img
-                        src={settings.branding.logoUrl || "/logo-icon.png"}
-                        alt="Preview"
-                        className="w-full h-full object-contain"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).src = "/logo-icon.png";
-                        }}
-                      />
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  <div className="p-4 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-1">
+                    <span className="text-xs text-[#94A3B8]">Application Access</span>
+                    <div className="text-lg font-bold text-[#F8FAFC] flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#10B981]" />
+                      <span>Active</span>
                     </div>
+                    <span className="text-[11px] text-[#64748B] block">
+                      Expires {humanExpiry}
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-1">
+                    <span className="text-xs text-[#94A3B8]">Authorized Sessions</span>
+                    <div className="text-lg font-bold text-[#F8FAFC]">
+                      {devices.length} Device{devices.length === 1 ? "" : "s"}
+                    </div>
+                    <span className="text-[11px] text-[#64748B] block">
+                      {devices.filter((d) => d.status === "active").length} Active now
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-1">
+                    <span className="text-xs text-[#94A3B8]">AI Intelligence Engine</span>
+                    <div className="text-lg font-bold text-[#F8FAFC] flex items-center gap-1.5">
+                      <span className="w-2 h-2 rounded-full bg-[#14B8A6]" />
+                      <span>Groq Llama-3</span>
+                    </div>
+                    <span className="text-[11px] text-[#64748B] block truncate">
+                      {settings.aiRules.model}
+                    </span>
+                  </div>
+
+                  <div className="p-4 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-1">
+                    <span className="text-xs text-[#94A3B8]">Chrome Extension</span>
+                    <div className="text-lg font-bold text-[#F8FAFC] flex items-center gap-1.5">
+                      <span className={`w-2 h-2 rounded-full ${settings.extensionEnabled ? "bg-[#10B981]" : "bg-[#F43F5E]"}`} />
+                      <span>{settings.extensionEnabled ? "Connected" : "Disabled"}</span>
+                    </div>
+                    <span className="text-[11px] text-[#64748B] block">
+                      Bridge ready
+                    </span>
                   </div>
                 </div>
 
-                {/* Footer Credit */}
-                <div className="space-y-1 sm:col-span-2">
-                  <label className="text-xs font-bold text-zinc-200 block">Footer Signature / Credit</label>
-                  <input
-                    type="text"
-                    value={settings.branding.footerCredit}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        branding: { ...settings.branding, footerCredit: e.target.value },
-                      })
-                    }
-                    className="w-full h-9 bg-zinc-900 border border-zinc-800 rounded-xl px-3 text-xs text-zinc-100 focus:outline-none"
-                  />
+                {/* Quick Shortcuts */}
+                <div className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-3">
+                  <h4 className="text-sm font-semibold text-[#F8FAFC]">Quick Governance Actions</h4>
+                  <div className="flex flex-wrap gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("security")}
+                      className="px-3.5 py-2 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-xs font-medium text-[#E2E8F0] transition cursor-pointer"
+                    >
+                      Update Access Expiration
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("sessions")}
+                      className="px-3.5 py-2 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-xs font-medium text-[#E2E8F0] transition cursor-pointer"
+                    >
+                      Manage Active Sessions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("ai")}
+                      className="px-3.5 py-2 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-xs font-medium text-[#E2E8F0] transition cursor-pointer"
+                    >
+                      Configure AI Model &amp; Guardrails
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setActiveTab("branding")}
+                      className="px-3.5 py-2 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-xs font-medium text-[#E2E8F0] transition cursor-pointer"
+                    >
+                      Update App Title &amp; Branding
+                    </button>
+                  </div>
                 </div>
               </div>
+            )}
 
-              {/* Accent Color Palette */}
-              <div className="space-y-2 pt-2 border-t border-zinc-800">
-                <label className="text-xs font-bold text-zinc-200 block">
-                  Studio Accent Theme Color
-                </label>
-                <div className="flex flex-wrap gap-2.5">
-                  {PRESET_COLORS.map((c) => {
-                    const isSelected = settings.branding.accentColor.toLowerCase() === c.hex.toLowerCase();
+            {/* ========================================================================= */}
+            {/* TAB 2: SESSIONS & DEVICES                                                 */}
+            {/* ========================================================================= */}
+            {activeTab === "sessions" && (
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                  <div>
+                    <h3 className="text-base font-bold text-[#F8FAFC]">Active Sessions</h3>
+                    <p className="text-xs text-[#94A3B8]">
+                      Authorized devices and browsers permitted to use Etsy Intelligence.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={handleRevokeAllOther}
+                      className="px-3.5 py-2 bg-[#172231] hover:bg-[#1E293B] text-[#E2E8F0] border border-[#263244] rounded-[10px] text-xs font-medium transition cursor-pointer"
+                    >
+                      Revoke All Other Sessions
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmWipeDialog(true)}
+                      className="px-3.5 py-2 bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30 rounded-[10px] text-xs font-medium transition cursor-pointer"
+                    >
+                      Remote Wipe All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2.5">
+                  {devices.map((d) => {
+                    const isCur = d.id === currentId;
+                    const isRev = d.status === "revoked";
+                    const Icon = d.type === "mobile" ? Smartphone : d.type === "tablet" ? Tablet : Laptop;
+
                     return (
-                      <button
-                        key={c.hex}
-                        type="button"
-                        onClick={() =>
-                          setSettings({
-                            ...settings,
-                            branding: { ...settings.branding, accentColor: c.hex },
-                          })
-                        }
-                        className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
-                          isSelected
-                            ? "bg-zinc-800 text-white border-white/40 shadow-sm"
-                            : "bg-zinc-900/60 text-zinc-400 border-zinc-800 hover:text-white"
+                      <div
+                        key={d.id}
+                        className={`p-4 rounded-[14px] border flex flex-col sm:flex-row sm:items-center justify-between gap-3 transition ${
+                          isRev
+                            ? "bg-[#0F1621]/40 border-[#263244]/40 opacity-50"
+                            : isCur
+                            ? "bg-[#0F1621] border-[#14B8A6]/40 shadow-xs"
+                            : "bg-[#0F1621] border-[#263244]"
                         }`}
                       >
-                        <span className={`w-3 h-3 rounded-full ${c.bg}`} />
-                        <span>{c.name}</span>
-                        {isSelected && <Check className="w-3 h-3 text-white" />}
-                      </button>
+                        <div className="flex items-center gap-3">
+                          <div
+                            className={`w-10 h-10 rounded-[10px] flex items-center justify-center shrink-0 ${
+                              isRev
+                                ? "bg-[#111827] text-[#64748B]"
+                                : isCur
+                                ? "bg-[#14B8A6]/10 text-[#2DD4BF] border border-[#14B8A6]/20"
+                                : "bg-[#131C29] text-[#94A3B8]"
+                            }`}
+                          >
+                            <Icon className="w-5 h-5" />
+                          </div>
+                          <div className="space-y-0.5">
+                            <div className="flex items-center gap-2 flex-wrap">
+                              <span className="text-sm font-semibold text-[#F8FAFC]">{d.name}</span>
+                              {isCur && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#14B8A6]/10 text-[#2DD4BF] border border-[#14B8A6]/20">
+                                  This Browser
+                                </span>
+                              )}
+                              <span
+                                className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                                  isRev
+                                    ? "bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20"
+                                    : "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20"
+                                }`}
+                              >
+                                {isRev ? "Revoked" : "Active"}
+                              </span>
+                            </div>
+                            <div className="text-xs text-[#64748B] flex items-center gap-2 flex-wrap">
+                              <span className="font-mono">ID: {d.id}</span>
+                              <span>·</span>
+                              <span>Authorized {new Date(d.firstAuthorized).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</span>
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 self-end sm:self-center">
+                          {!isRev ? (
+                            <button
+                              type="button"
+                              onClick={() => handleRevokeDevice(d.id)}
+                              className="px-2.5 py-1.5 rounded-[8px] bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 text-[#F43F5E] border border-[#F43F5E]/30 text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer"
+                            >
+                              <Ban className="w-3.5 h-3.5" />
+                              <span>Revoke</span>
+                            </button>
+                          ) : (
+                            <span className="text-xs text-[#64748B] italic">Revoked</span>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteDevice(d.id)}
+                            className="w-8 h-8 rounded-[8px] text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#131C29] flex items-center justify-center transition cursor-pointer"
+                            title="Remove session record"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
                     );
                   })}
                 </div>
               </div>
+            )}
 
-              {/* Announcement Banner */}
-              <div className="p-4 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-3">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-bold text-white">Top Studio Announcement Banner</span>
-                  <label className="relative inline-flex items-center cursor-pointer">
+            {/* ========================================================================= */}
+            {/* TAB 3: API & EXTENSION                                                    */}
+            {/* ========================================================================= */}
+            {activeTab === "apikeys" && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-bold text-[#F8FAFC]">API &amp; Extension Configuration</h3>
+                  <p className="text-xs text-[#94A3B8]">
+                    Configure and manage external marketplace and AI model connections.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Groq Cloud */}
+                  <div className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-3 md:col-span-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-[10px] bg-[#14B8A6]/10 text-[#14B8A6] flex items-center justify-center">
+                          <Cpu className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <h4 className="text-sm font-semibold text-[#F8FAFC]">Groq Llama-3 AI Engine</h4>
+                          <p className="text-xs text-[#94A3B8]">Model: {settings.aiRules.model}</p>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
+                        Connected
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#64748B] leading-relaxed">
+                      Powers title optimization, deterministic 13-tag extraction, and listing gap diagnostics.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleRemoteDeleteGroqKey}
+                        className="px-3 py-1.5 rounded-[10px] bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 text-[#F43F5E] text-xs font-medium border border-[#F43F5E]/30 cursor-pointer"
+                      >
+                        Clear Custom Groq Key
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Chrome Extension */}
+                  <div className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Puzzle className="w-4 h-4 text-[#14B8A6]" />
+                        <h4 className="text-sm font-semibold text-[#F8FAFC]">Chrome Extension Bridge</h4>
+                      </div>
+                      <span
+                        className={`px-2 py-0.5 rounded-full text-[10px] font-semibold ${
+                          settings.extensionEnabled
+                            ? "bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20"
+                            : "bg-[#F43F5E]/10 text-[#F43F5E] border border-[#F43F5E]/20"
+                        }`}
+                      >
+                        {settings.extensionEnabled ? "Active" : "Disabled"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#64748B]">
+                      Bridge Token: <code className="font-mono text-[#E2E8F0]">{settings.extensionBridgeToken}</code>
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          handleSaveAll({
+                            extensionEnabled: !settings.extensionEnabled,
+                          })
+                        }
+                        className="px-3 py-1.5 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] text-[#E2E8F0] text-xs font-medium border border-[#263244] cursor-pointer"
+                      >
+                        {settings.extensionEnabled ? "Disable Bridge" : "Enable Bridge"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleRemoteDeleteExtension}
+                        className="px-3 py-1.5 rounded-[10px] bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 text-[#F43F5E] text-xs font-medium border border-[#F43F5E]/30 cursor-pointer"
+                      >
+                        Revoke Bridge
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Etsy Developer API */}
+                  <div className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Key className="w-4 h-4 text-[#14B8A6]" />
+                        <h4 className="text-sm font-semibold text-[#F8FAFC]">Etsy Open API v3</h4>
+                      </div>
+                      <span className="text-xs text-[#94A3B8]">Configured</span>
+                    </div>
+                    <p className="text-xs text-[#64748B]">
+                      Official API integration for high-throughput server-side metadata fetching.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={handleRemoteDeleteEtsyKey}
+                        className="px-3 py-1.5 rounded-[10px] bg-[#F43F5E]/10 hover:bg-[#F43F5E]/20 text-[#F43F5E] text-xs font-medium border border-[#F43F5E]/30 cursor-pointer"
+                      >
+                        Clear Etsy Key
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TAB 4: AI GUARDRAILS                                                      */}
+            {/* ========================================================================= */}
+            {activeTab === "ai" && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-bold text-[#F8FAFC]">AI Rules &amp; Guardrails</h3>
+                  <p className="text-xs text-[#94A3B8]">
+                    Control model reasoning parameters, system prompt guidance, and keyword negative lists.
+                  </p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-xs font-semibold text-[#F8FAFC] block">
+                    System Prompt Guidelines
+                  </label>
+                  <textarea
+                    value={settings.aiRules.systemPromptGuidelines}
+                    onChange={(e) =>
+                      setSettings({
+                        ...settings,
+                        aiRules: {
+                          ...settings.aiRules,
+                          systemPromptGuidelines: e.target.value,
+                        },
+                      })
+                    }
+                    rows={3}
+                    className="w-full bg-[#111827] border border-[#263244] rounded-[10px] p-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6] font-mono leading-relaxed"
+                  />
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-[#F8FAFC] block">Reasoning Model</label>
+                    <select
+                      value={settings.aiRules.model}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          aiRules: {
+                            ...settings.aiRules,
+                            model: e.target.value,
+                          },
+                        })
+                      }
+                      className="w-full h-10 bg-[#111827] border border-[#263244] rounded-[10px] px-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
+                    >
+                      <option value="llama-3.3-70b-versatile">llama-3.3-70b-versatile (Recommended)</option>
+                      <option value="llama-3.1-8b-instant">llama-3.1-8b-instant (Fast)</option>
+                      <option value="mixtral-8x7b-32768">mixtral-8x7b-32768</option>
+                    </select>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between">
+                      <label className="text-xs font-semibold text-[#F8FAFC]">Temperature</label>
+                      <span className="text-xs font-mono text-[#14B8A6]">
+                        {settings.aiRules.temperature}
+                      </span>
+                    </div>
                     <input
-                      type="checkbox"
-                      checked={settings.branding.announcementBanner.enabled}
+                      type="range"
+                      min={0}
+                      max={1}
+                      step={0.05}
+                      value={settings.aiRules.temperature}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          aiRules: {
+                            ...settings.aiRules,
+                            temperature: parseFloat(e.target.value),
+                          },
+                        })
+                      }
+                      className="w-full accent-[#14B8A6]"
+                    />
+                    <div className="flex justify-between text-[11px] text-[#64748B]">
+                      <span>Deterministic (0.0)</span>
+                      <span>Creative (1.0)</span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Negative Keywords List */}
+                <div className="space-y-2 pt-2 border-t border-[#263244]">
+                  <label className="text-xs font-semibold text-[#F8FAFC] block">
+                    Strict Negative Keywords Filter
+                  </label>
+                  <form onSubmit={handleAddNegativeKeyword} className="flex gap-2">
+                    <input
+                      type="text"
+                      value={negativeKwInput}
+                      onChange={(e) => setNegativeKwInput(e.target.value)}
+                      placeholder="Add excluded term (e.g. cheap, fake)..."
+                      className="flex-1 h-9 bg-[#111827] border border-[#263244] rounded-[10px] px-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
+                    />
+                    <button
+                      type="submit"
+                      className="h-9 px-3 bg-[#172231] hover:bg-[#1E293B] text-[#E2E8F0] rounded-[10px] text-xs font-medium cursor-pointer border border-[#263244]"
+                    >
+                      Add Filter
+                    </button>
+                  </form>
+
+                  <div className="flex flex-wrap gap-1.5 pt-1">
+                    {settings.aiRules.negativeKeywords.map((kw, i) => (
+                      <span
+                        key={i}
+                        className="px-2.5 py-1 rounded-full bg-[#111827] text-[#94A3B8] text-xs border border-[#263244] flex items-center gap-1.5"
+                      >
+                        <span>{kw}</span>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveNegativeKeyword(kw)}
+                          className="text-[#64748B] hover:text-[#F43F5E] cursor-pointer ml-1"
+                        >
+                          ✕
+                        </button>
+                      </span>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="pt-2 flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => handleSaveAll({ aiRules: settings.aiRules })}
+                    className="px-4 py-2 bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] text-xs font-semibold rounded-[10px] transition cursor-pointer shadow-sm"
+                  >
+                    Save AI Rules
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* ========================================================================= */}
+            {/* TAB 5: BRANDING                                                           */}
+            {/* ========================================================================= */}
+            {activeTab === "branding" && (
+              <div className="space-y-5">
+                <div>
+                  <h3 className="text-base font-bold text-[#F8FAFC]">Brand Identity</h3>
+                  <p className="text-xs text-[#94A3B8]">
+                    Customize application name, subtitle, and announcement banner.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-[#F8FAFC] block">App Name</label>
+                    <input
+                      type="text"
+                      value={settings.branding.appName}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          branding: { ...settings.branding, appName: e.target.value },
+                        })
+                      }
+                      className="w-full h-10 bg-[#111827] border border-[#263244] rounded-[10px] px-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
+                    />
+                  </div>
+
+                  <div className="space-y-1">
+                    <label className="text-xs font-semibold text-[#F8FAFC] block">Header Subtitle</label>
+                    <input
+                      type="text"
+                      value={settings.branding.headerBadgeText}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          branding: { ...settings.branding, headerBadgeText: e.target.value },
+                        })
+                      }
+                      className="w-full h-10 bg-[#111827] border border-[#263244] rounded-[10px] px-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
+                    />
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-semibold text-[#F8FAFC] block">Logo Image URL</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={settings.branding.logoUrl}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            branding: { ...settings.branding, logoUrl: e.target.value },
+                          })
+                        }
+                        className="flex-1 h-10 bg-[#111827] border border-[#263244] rounded-[10px] px-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
+                      />
+                      <div className="w-10 h-10 rounded-[10px] bg-[#111827] border border-[#263244] flex items-center justify-center shrink-0 p-1">
+                        <img
+                          src={settings.branding.logoUrl || "/logo-icon.png"}
+                          alt="Preview"
+                          className="w-full h-full object-contain"
+                          onError={(e) => {
+                            (e.target as HTMLImageElement).src = "/logo-icon.png";
+                          }}
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-1 sm:col-span-2">
+                    <label className="text-xs font-semibold text-[#F8FAFC] block">Footer Signature</label>
+                    <input
+                      type="text"
+                      value={settings.branding.footerCredit}
+                      onChange={(e) =>
+                        setSettings({
+                          ...settings,
+                          branding: { ...settings.branding, footerCredit: e.target.value },
+                        })
+                      }
+                      className="w-full h-10 bg-[#111827] border border-[#263244] rounded-[10px] px-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
+                    />
+                  </div>
+                </div>
+
+                {/* Announcement Banner */}
+                <div className="p-4 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-xs font-semibold text-[#F8FAFC] block">Top Announcement Banner</span>
+                      <span className="text-[11px] text-[#64748B]">Broadcast notices to all users</span>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={settings.branding.announcementBanner.enabled}
+                        onChange={(e) =>
+                          setSettings({
+                            ...settings,
+                            branding: {
+                              ...settings.branding,
+                              announcementBanner: {
+                                ...settings.branding.announcementBanner,
+                                enabled: e.target.checked,
+                              },
+                            },
+                          })
+                        }
+                        className="sr-only peer"
+                      />
+                      <div className="w-9 h-5 bg-[#263244] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-[#14B8A6]"></div>
+                    </label>
+                  </div>
+
+                  {settings.branding.announcementBanner.enabled && (
+                    <input
+                      type="text"
+                      value={settings.branding.announcementBanner.text}
                       onChange={(e) =>
                         setSettings({
                           ...settings,
@@ -791,161 +898,276 @@ export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
                             ...settings.branding,
                             announcementBanner: {
                               ...settings.branding.announcementBanner,
-                              enabled: e.target.checked,
+                              text: e.target.value,
                             },
                           },
                         })
                       }
-                      className="sr-only peer"
+                      placeholder="Enter announcement text..."
+                      className="w-full h-10 bg-[#111827] border border-[#263244] rounded-[10px] px-3 text-xs text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
                     />
-                    <div className="w-9 h-5 bg-zinc-700 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-zinc-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
-                  </label>
+                  )}
                 </div>
 
-                {settings.branding.announcementBanner.enabled && (
-                  <input
-                    type="text"
-                    value={settings.branding.announcementBanner.text}
-                    onChange={(e) =>
-                      setSettings({
-                        ...settings,
-                        branding: {
-                          ...settings.branding,
-                          announcementBanner: {
-                            ...settings.branding.announcementBanner,
-                            text: e.target.value,
-                          },
-                        },
-                      })
-                    }
-                    placeholder="Enter banner message shown to all users..."
-                    className="w-full h-9 bg-zinc-950 border border-zinc-800 rounded-lg px-3 text-xs text-zinc-100 focus:outline-none"
-                  />
-                )}
+                <div className="flex items-center justify-between pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const r = resetAdminSettings();
+                      setSettings(r);
+                      notify("Reset to defaults.");
+                    }}
+                    className="px-3 py-1.5 rounded-[10px] text-xs text-[#64748B] hover:text-[#94A3B8] flex items-center gap-1 cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Reset Defaults</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => handleSaveAll({ branding: settings.branding })}
+                    className="px-4 py-2 bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] text-xs font-semibold rounded-[10px] transition cursor-pointer shadow-sm"
+                  >
+                    Save Branding
+                  </button>
+                </div>
               </div>
+            )}
 
-              <div className="flex items-center justify-between pt-2">
-                <button
-                  type="button"
-                  onClick={() => {
-                    const r = resetAdminSettings();
-                    setSettings(r);
-                    notify("Reset to factory branding.");
-                  }}
-                  className="px-3 py-1.5 rounded-lg text-xs text-zinc-500 hover:text-zinc-300 flex items-center gap-1 cursor-pointer"
-                >
-                  <RotateCcw className="w-3 h-3" />
-                  <span>Reset Defaults</span>
-                </button>
+            {/* ========================================================================= */}
+            {/* TAB 6: ACCESS & SECURITY (Secret Key & Expiry Date)                       */}
+            {/* ========================================================================= */}
+            {activeTab === "security" && (
+              <div className="space-y-6">
+                <div>
+                  <h3 className="text-base font-bold text-[#F8FAFC]">Access &amp; Security</h3>
+                  <p className="text-xs text-[#94A3B8]">
+                    Manage access credentials, expiration dates, and emergency authentication locks.
+                  </p>
+                </div>
 
-                <button
-                  type="button"
-                  onClick={() => handleSaveAll({ branding: settings.branding })}
-                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-sm"
-                >
-                  Apply Branding Live
-                </button>
-              </div>
-            </div>
-          )}
+                {/* Access Secret Card */}
+                <div className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold text-[#F8FAFC]">Access Secret</h4>
+                      <p className="text-xs text-[#94A3B8]">Key required for clients to access this studio.</p>
+                    </div>
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
+                      Configured
+                    </span>
+                  </div>
 
-          {/* ========================================================================= */}
-          {/* TAB 5: APP SECRET & EXPIRATION (MUZAMIL'S SECRET KEY)                     */}
-          {/* ========================================================================= */}
-          {activeTab === "secret" && (
-            <div className="space-y-4">
-              <div>
-                <h3 className="text-sm font-bold text-white">App Access Secret &amp; Date Expiration</h3>
-                <p className="text-xs text-zinc-400">
-                  This key is strictly private. Only you can view or set it from this master panel.
-                </p>
-              </div>
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-[#111827] rounded-[10px] border border-[#263244]">
+                    <div>
+                      <div className="font-mono text-sm tracking-widest text-[#94A3B8]">
+                        ••••••••••••••••
+                      </div>
+                      <span className="text-[11px] text-[#64748B]">
+                        Active secret stored securely
+                      </span>
+                    </div>
 
-              <form onSubmit={handleSaveSecretAndExpiry} className="p-5 bg-zinc-900/60 rounded-xl border border-zinc-800 space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-200 block">
-                      Secret Key Phrase (Private)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type={showSecret ? "text" : "password"}
-                        value={appSecretInput}
-                        onChange={(e) => setAppSecretInput(e.target.value)}
-                        className="w-full h-10 bg-zinc-950 border border-zinc-800 rounded-xl pl-3 pr-10 text-xs font-mono text-white focus:outline-none focus:border-zinc-700"
-                        required
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowSecret(!showSecret)}
-                        className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
-                      >
-                        {showSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                      </button>
+                    <button
+                      type="button"
+                      onClick={() => setShowReplaceSecretDialog(true)}
+                      className="px-3.5 py-1.5 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-xs font-medium text-[#E2E8F0] transition cursor-pointer"
+                    >
+                      Replace Secret
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expiration Date Card */}
+                <form onSubmit={handleSaveSecretAndExpiry} className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h4 className="text-sm font-semibold text-[#F8FAFC]">Access Expiration</h4>
+                      <p className="text-xs text-[#94A3B8]">Set the valid-until date threshold for active credentials.</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-xs text-[#14B8A6] font-medium">
+                      <Calendar className="w-3.5 h-3.5" />
+                      <span>{humanExpiry}</span>
                     </div>
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-200 block">
-                      Expiration Date (Access valid until)
+                  <div className="space-y-1.5 max-w-sm">
+                    <label className="text-xs font-semibold text-[#F8FAFC] block">
+                      Select Expiration Date
                     </label>
                     <input
                       type="date"
                       value={expiryInput}
                       onChange={(e) => setExpiryInput(e.target.value)}
-                      className="w-full h-10 bg-zinc-950 border border-zinc-800 rounded-xl px-3 text-xs text-white focus:outline-none focus:border-zinc-700"
+                      className="w-full h-11 bg-[#111827] border border-[#263244] rounded-[10px] px-3.5 text-xs font-mono text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
                       required
                     />
+                    <p className="text-xs text-[#94A3B8]">
+                      Access expires <strong>{new Date(`${expiryInput}T00:00:00.000Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</strong>.
+                    </p>
                   </div>
-                </div>
 
-                <div className="flex items-center justify-between pt-2">
-                  <div className="text-xs text-zinc-400">
-                    Currently: <strong className="text-emerald-400">{settings.appSecret}</strong> (Valid till{" "}
-                    <strong>{new Date(settings.appSecretExpiry).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</strong>)
+                  <div className="pt-2 flex justify-end">
+                    <button
+                      type="submit"
+                      className="px-4 py-2 bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] text-xs font-semibold rounded-[10px] transition cursor-pointer shadow-sm"
+                    >
+                      Save Expiration Date
+                    </button>
+                  </div>
+                </form>
+
+                {/* Emergency Lock Danger Panel */}
+                <div className="p-5 bg-[#F43F5E]/5 border border-[#F43F5E]/20 rounded-[14px] flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="space-y-1">
+                    <h4 className="text-sm font-semibold text-[#F43F5E] flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4" />
+                      <span>Lock Etsy Intelligence</span>
+                    </h4>
+                    <p className="text-xs text-[#94A3B8] max-w-md">
+                      Immediately invalidates active user sessions and requires authentication again.
+                    </p>
                   </div>
                   <button
-                    type="submit"
-                    className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-sm"
+                    type="button"
+                    onClick={() => setShowConfirmLockDialog(true)}
+                    className="px-4 py-2 bg-[#F43F5E] hover:bg-[#E11D48] text-white rounded-[10px] text-xs font-semibold inline-flex items-center gap-1.5 cursor-pointer shadow-sm transition self-start sm:self-auto"
                   >
-                    Save Secret &amp; Date
+                    <LogOut className="w-3.5 h-3.5" />
+                    <span>Lock Application</span>
                   </button>
                 </div>
-              </form>
-
-              {/* Emergency Lock Studio Button */}
-              <div className="p-4 bg-rose-950/40 border border-rose-900/60 rounded-xl flex items-center justify-between flex-wrap gap-3">
-                <div className="space-y-0.5">
-                  <h4 className="text-xs font-bold text-rose-300">Lock App Immediately</h4>
-                  <p className="text-[11px] text-rose-400/80">
-                    Wipes session token from this browser and forces re-authentication.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => lockApp()}
-                  className="px-3.5 py-2 bg-rose-600 hover:bg-rose-500 text-white rounded-lg text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-sm transition"
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>Lock Studio Now</span>
-                </button>
               </div>
-            </div>
-          )}
+            )}
+          </main>
         </div>
 
-        {/* Footer */}
-        <div className="px-6 py-3 border-t border-zinc-800 bg-zinc-900/50 flex items-center justify-between text-xs text-zinc-400">
-          <span>Admin Session Active • User: <strong>Muzamil</strong></span>
+        {/* Footer Bar */}
+        <div className="h-12 px-6 border-t border-[#263244] bg-[#0F1621] flex items-center justify-between text-xs text-[#64748B] shrink-0">
+          <span>Session active · Administrator controls</span>
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-1.5 bg-white text-zinc-950 rounded-lg text-xs font-bold hover:bg-zinc-200 transition cursor-pointer"
+            className="px-3.5 py-1.5 bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-[#F8FAFC] rounded-[8px] text-xs font-medium transition cursor-pointer"
           >
-            Close Panel
+            Close
           </button>
         </div>
       </div>
+
+      {/* Replace Secret Dialog */}
+      {showReplaceSecretDialog && (
+        <div className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-[#0F1621] border border-[#263244] rounded-[16px] p-6 shadow-2xl space-y-4">
+            <h4 className="text-sm font-bold text-[#F8FAFC]">Set New Access Secret</h4>
+            <p className="text-xs text-[#94A3B8]">
+              Clients will need this new phrase to authenticate into the studio.
+            </p>
+
+            <div className="relative">
+              <input
+                type={showSecretInDialog ? "text" : "password"}
+                value={newSecretValue}
+                onChange={(e) => setNewSecretValue(e.target.value)}
+                placeholder="Enter new secret key..."
+                autoFocus
+                className="w-full h-11 bg-[#111827] border border-[#263244] rounded-[10px] px-3.5 pr-10 text-xs font-mono text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
+              />
+              <button
+                type="button"
+                onClick={() => setShowSecretInDialog(!showSecretInDialog)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#94A3B8]"
+                tabIndex={-1}
+              >
+                {showSecretInDialog ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowReplaceSecretDialog(false);
+                  setNewSecretValue("");
+                }}
+                className="px-3.5 py-2 text-xs text-[#94A3B8] hover:text-[#F8FAFC] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleApplyNewSecret}
+                disabled={!newSecretValue.trim()}
+                className="px-4 py-2 bg-[#14B8A6] hover:bg-[#2DD4BF] disabled:opacity-50 text-[#021A17] text-xs font-semibold rounded-[10px] cursor-pointer"
+              >
+                Save New Secret
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Lock Dialog */}
+      {showConfirmLockDialog && (
+        <div className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-[#0F1621] border border-[#263244] rounded-[16px] p-6 shadow-2xl space-y-4">
+            <h4 className="text-sm font-bold text-[#F8FAFC] flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-[#F43F5E]" />
+              <span>Lock Application?</span>
+            </h4>
+            <p className="text-xs text-[#94A3B8]">
+              This will clear your active browser authentication token immediately. You will be redirected to the lock screen.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmLockDialog(false)}
+                className="px-3.5 py-2 text-xs text-[#94A3B8] hover:text-[#F8FAFC] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => lockApp()}
+                className="px-4 py-2 bg-[#F43F5E] hover:bg-[#E11D48] text-white text-xs font-semibold rounded-[10px] cursor-pointer"
+              >
+                Lock Application Now
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Confirm Wipe Sessions Dialog */}
+      {showConfirmWipeDialog && (
+        <div className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/75 backdrop-blur-xs">
+          <div className="w-full max-w-sm bg-[#0F1621] border border-[#263244] rounded-[16px] p-6 shadow-2xl space-y-4">
+            <h4 className="text-sm font-bold text-[#F8FAFC] flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-[#F43F5E]" />
+              <span>Remote Wipe All Sessions?</span>
+            </h4>
+            <p className="text-xs text-[#94A3B8]">
+              This will immediately terminate all client sessions across all registered browsers and log out everyone.
+            </p>
+            <div className="flex items-center justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowConfirmWipeDialog(false)}
+                className="px-3.5 py-2 text-xs text-[#94A3B8] hover:text-[#F8FAFC] cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteWipeSessions}
+                className="px-4 py-2 bg-[#F43F5E] hover:bg-[#E11D48] text-white text-xs font-semibold rounded-[10px] cursor-pointer"
+              >
+                Confirm Remote Wipe
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

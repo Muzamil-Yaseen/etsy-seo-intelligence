@@ -1,32 +1,58 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&family=Poppins:wght@500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
 @theme {
   --font-sans: var(--font-manrope, 'Manrope'), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-body: var(--font-manrope, 'Manrope'), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-heading: var(--font-poppins, 'Poppins'), sans-serif;
-  --font-manrope: var(--font-manrope, 'Manrope'), sans-serif;
-  --font-poppins: var(--font-poppins, 'Poppins'), sans-serif;
+  --font-heading: var(--font-manrope, 'Manrope'), sans-serif;
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+
+  /* Design System Color Tokens */
+  --color-bg-page: #070B14;
+  --color-bg-secondary: #0B1019;
+  --color-surface-main: #0F1621;
+  --color-surface-elevated: #131C29;
+  --color-surface-interactive: #172231;
+  --color-bg-input: #111827;
+  --color-border-primary: #263244;
+  --color-border-strong: #36445A;
+  --color-text-main: #F8FAFC;
+  --color-text-secondary: #94A3B8;
+  --color-text-muted: #64748B;
+  --color-brand-teal: #14B8A6;
+  --color-brand-teal-hover: #2DD4BF;
+  --color-brand-teal-dark: #0F766E;
+  --color-status-success: #10B981;
+  --color-status-warning: #F59E0B;
+  --color-status-danger: #F43F5E;
+  --color-status-info: #38BDF8;
 }
 
 :root {
-  --primary-navy: #0F172A;
-  --secondary-slate: #64748B;
-  --tertiary-sage: #059669;
-  --background: #F8FAFC;
-  --surface: #FFFFFF;
-  --border: #E2E8F0;
-  --font-body: var(--font-manrope, 'Manrope'), -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-heading: var(--font-poppins, 'Poppins'), sans-serif;
-  --font-headline: var(--font-poppins, 'Poppins'), sans-serif;
-  --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
+  --bg-page: #070B14;
+  --bg-secondary: #0B1019;
+  --surface-main: #0F1621;
+  --surface-elevated: #131C29;
+  --surface-interactive: #172231;
+  --bg-input: #111827;
+  --border-primary: #263244;
+  --border-strong: #36445A;
+  --text-main: #F8FAFC;
+  --text-secondary: #94A3B8;
+  --text-muted: #64748B;
+  --brand-teal: #14B8A6;
+  --brand-teal-hover: #2DD4BF;
+  --brand-teal-dark: #0F766E;
+  --color-success: #10B981;
+  --color-warning: #F59E0B;
+  --color-danger: #F43F5E;
+  --color-info: #38BDF8;
 }
 
 body {
-  background-color: #F8FAFC;
-  color: #0F172A;
-  font-family: var(--font-body);
+  background-color: #070B14;
+  color: #F8FAFC;
+  font-family: var(--font-sans);
   font-weight: 400;
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
@@ -35,34 +61,23 @@ body {
 }
 
 h1, h2, h3, h4, h5, h6, .font-heading {
-  font-family: var(--font-heading);
+  font-family: var(--font-sans);
   letter-spacing: -0.02em;
 }
 
 h1 {
-  font-family: var(--font-heading);
   font-weight: 700;
-  line-height: 1.15;
+  line-height: 1.2;
 }
 
 h2 {
-  font-family: var(--font-heading);
-  font-weight: 600;
+  font-weight: 700;
   line-height: 1.25;
 }
 
 h3 {
-  font-family: var(--font-heading);
   font-weight: 600;
   line-height: 1.35;
-}
-
-.font-poppins {
-  font-family: var(--font-heading);
-}
-
-.font-manrope {
-  font-family: var(--font-body);
 }
 
 code, pre, .font-mono {
@@ -74,4 +89,21 @@ svg, [data-lucide], .lucide {
   font-family: inherit;
 }
 
+/* Custom subtle scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
 
+::-webkit-scrollbar-track {
+  background: #070B14;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #263244;
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #36445A;
+}

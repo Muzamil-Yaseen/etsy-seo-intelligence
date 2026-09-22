@@ -42,7 +42,8 @@ import {
 import { PricingCalculator } from "@/components/pricing-calculator";
 import { ProductFactsDrawer } from "@/components/product-facts-drawer";
 import { DataDetailsDrawer } from "@/components/data-details-drawer";
-import { Header, NavItem } from "@/components/header";
+import { AppShell, ViewTab } from "@/components/app-shell";
+import { DashboardHome } from "@/components/dashboard-home";
 import {
   ListingDownloaderModal,
   ListingDownloaderData,
@@ -84,6 +85,7 @@ export function QuickUserView() {
   const [appMode, setAppMode] = useState<ApplicationMode>("research");
 
   // Navigation & View State
+  const [currentTab, setCurrentTab] = useState<ViewTab>("dashboard");
   const [activeTab, setActiveTab] = useState<MainTab>("overview");
   const [listingSubTab, setListingSubTab] = useState<ListingSubTab>("titles");
 
@@ -108,8 +110,17 @@ export function QuickUserView() {
   const [isDataDetailsOpen, setIsDataDetailsOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
+  const [savedListings, setSavedListings] = useState<SavedListing[]>([]);
   const [isDeviceManagerOpen, setIsDeviceManagerOpen] = useState(false);
   const [isMasterAdminOpen, setIsMasterAdminOpen] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const list = getSavedListings();
+      setSavedListings(list);
+      setSavedCount(list.length);
+    }
+  }, [isHistoryOpen]);
 
   // Loading & Results
   const [isLoading, setIsLoading] = useState(false);
@@ -518,31 +529,10 @@ export function QuickUserView() {
     }
   };
 
-  // Map activeTab to header NavItem
-  const activeNav: NavItem = useMemo(() => {
-    if (!results) return "research";
-    if (activeTab === "overview") return "research";
-    if (activeTab === "keywords") return "keywords";
-    if (activeTab === "competitors") return "competitors";
-    if (activeTab === "listing") return "listing";
-    if (activeTab === "pricing") return "pricing";
-    return "research";
-  }, [results, activeTab]);
-
-  const handleSelectNav = (item: NavItem) => {
-    if (item === "research") {
-      if (!results) {
-        setAppMode("research");
-      } else {
-        setActiveTab("overview");
-      }
-    } else {
-      setActiveTab(item as MainTab);
-    }
-  };
-
   const handleNewAnalysis = () => {
     handleResetSession();
+    setCurrentTab("dashboard");
+    setActiveTab("overview");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -813,35 +803,105 @@ export function QuickUserView() {
 
   return (
     <AccessGate>
-      <div className="min-h-screen bg-slate-50 text-slate-900 flex flex-col font-sans antialiased overflow-x-hidden w-full">
-        {/* Premium Floating Glass Header */}
-        <Header
-          activeNav={activeNav}
-          onSelectNav={handleSelectNav}
-          onNewAnalysis={handleNewAnalysis}
-          onOpenHistory={() => setIsHistoryOpen(true)}
-          savedCount={savedCount}
-          onOpenFacts={() => setIsFactsDrawerOpen(true)}
-          onOpenDownloader={() => handleOpenDownloader(null)}
-          onOpenDeviceManager={() => setIsDeviceManagerOpen(true)}
-          onOpenMasterAdmin={() => setIsMasterAdminOpen(true)}
-        />
-
-        {/* Main Body */}
-        <main className="flex-1 max-w-6xl w-full mx-auto px-4 sm:px-6 pt-3 sm:pt-6 pb-28 sm:pb-8 space-y-6">
-          {/* SEARCH WORKSPACE: Shown when no results */}
-          {!results && (
-            <div className="max-w-2xl mx-auto py-8 sm:py-12 space-y-8">
+      <AppShell
+        currentTab={currentTab}
+        onSelectTab={(tab) => {
+          setCurrentTab(tab);
+          if (tab === "keywords") setActiveTab("keywords");
+          else if (tab === "listing") setActiveTab("listing");
+          else if (tab === "competitors") setActiveTab("competitors");
+          else if (tab === "pricing") setActiveTab("pricing");
+          else if (tab === "library") setActiveTab("keywords");
+          else if (tab === "ai") setActiveTab("overview");
+        }}
+        onNewAnalysis={handleNewAnalysis}
+        onOpenAdmin={() => setIsMasterAdminOpen(true)}
+        onOpenDownloader={() => handleOpenDownloader(null)}
+        onOpenFacts={() => setIsFactsDrawerOpen(true)}
+        onOpenHistory={() => setIsHistoryOpen(true)}
+        savedCount={savedCount}
+      >
+        <div className="w-full max-w-6xl mx-auto space-y-6">
+          {/* DASHBOARD HOME VIEW */}
+          {currentTab === "dashboard" ? (
+            <DashboardHome
+              searchQuery={searchQuery}
+              setSearchQuery={setSearchQuery}
+              onAnalyze={(e, q, l, u, p) => {
+                handleAnalyze(e, q, l, u, p);
+                if (appMode === "optimize") {
+                  setCurrentTab("listing");
+                  setActiveTab("listing");
+                } else {
+                  setCurrentTab("keywords");
+                  setActiveTab("keywords");
+                }
+              }}
+              isLoading={isLoading}
+              appMode={appMode}
+              setAppMode={setAppMode}
+              showManualUrls={showManualUrls}
+              setShowManualUrls={setShowManualUrls}
+              manualUrls={manualUrls}
+              setManualUrls={setManualUrls}
+              manualPrices={manualPrices}
+              setManualPrices={setManualPrices}
+              manualListings={manualListings}
+              fetchingUrlIndex={fetchingUrlIndex}
+              handleFetchUrlCompetitor={(idx) => handleAutoFetchCompetitorUrl(idx, manualUrls[idx])}
+              handleClearUrlSlot={(idx) => {
+                setManualUrls((prev) => {
+                  const copy = [...prev];
+                  copy[idx] = "";
+                  return copy;
+                });
+                setManualPrices((prev) => {
+                  const copy = [...prev];
+                  copy[idx] = "";
+                  return copy;
+                });
+                setManualListings((prev) => {
+                  const copy = [...prev];
+                  copy[idx] = null;
+                  return copy;
+                });
+              }}
+              handleOpenDownloader={handleOpenDownloader}
+              results={results}
+              savedListings={savedListings}
+              onRestoreSaved={(saved) => {
+                handleResetSession();
+                setSearchQuery(saved.mainBroadPhrase);
+                setEditedTitle(saved.title);
+                setEditedTags(saved.tags);
+                setEditedDescription(saved.description);
+                if (saved.rawResult) {
+                  setResults(saved.rawResult);
+                }
+                setCurrentTab("listing");
+                setActiveTab("listing");
+              }}
+              onSelectTab={(tab) => {
+                setCurrentTab(tab);
+                if (tab === "competitors") setActiveTab("competitors");
+                else if (tab === "keywords") setActiveTab("keywords");
+                else if (tab === "listing") setActiveTab("listing");
+                else if (tab === "pricing") setActiveTab("pricing");
+              }}
+              onOpenHistory={() => setIsHistoryOpen(true)}
+            />
+          ) : !results ? (
+            /* TARGETED SEARCH WORKSPACE: Shown when in sub-tab with no results yet */
+            <div className="max-w-2xl mx-auto py-8 sm:py-12 space-y-6">
               <div className="text-center space-y-3">
-                {/* Segmented Mode Selector */}
-                <div className="inline-flex p-1 bg-slate-200/80 rounded-xl text-xs font-semibold">
+                <div className="inline-flex p-1 bg-[#111827] border border-[#263244] rounded-[10px] text-xs font-semibold">
                   <button
                     type="button"
                     onClick={() => setAppMode("research")}
-                    className={`px-4 py-1.5 rounded-lg transition cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-[8px] transition cursor-pointer ${
                       appMode === "research"
-                        ? "bg-white text-slate-900 shadow-xs font-bold"
-                        : "text-slate-600 hover:text-slate-900"
+                        ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
+                        : "text-[#94A3B8] hover:text-[#F8FAFC]"
                     }`}
                   >
                     Market Research
@@ -849,227 +909,84 @@ export function QuickUserView() {
                   <button
                     type="button"
                     onClick={() => setAppMode("optimize")}
-                    className={`px-4 py-1.5 rounded-lg transition cursor-pointer ${
+                    className={`px-3.5 py-1.5 rounded-[8px] transition cursor-pointer ${
                       appMode === "optimize"
-                        ? "bg-white text-slate-900 shadow-xs font-bold"
-                        : "text-slate-600 hover:text-slate-900"
+                        ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
+                        : "text-[#94A3B8] hover:text-[#F8FAFC]"
                     }`}
                   >
                     Listing Optimization
                   </button>
                 </div>
 
-                <h1 className="font-heading text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight leading-tight">
-                  {appMode === "research"
-                    ? "Etsy Market & Competitor Research"
-                    : "Listing Optimization & Search Grounding"}
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-[#F8FAFC] tracking-tight">
+                  {currentTab === "keywords"
+                    ? "Keyword Intelligence & Search Grounding"
+                    : currentTab === "listing"
+                    ? "Listing Optimization & 13 Tags Studio"
+                    : currentTab === "competitors"
+                    ? "Competitor Analysis & Benchmark Engine"
+                    : currentTab === "pricing"
+                    ? "Pricing & Fee Intelligence Calculator"
+                    : "Etsy SEO Market Intelligence"}
                 </h1>
-                <p className="text-sm text-slate-600 max-w-lg mx-auto leading-relaxed">
-                  {appMode === "research"
-                    ? "Inspect real competitor listings, market price quartiles, and tag overlap without assuming your product features."
-                    : "Combine confirmed product facts with live competitor patterns to generate compliant titles, 13 tags, and pricing plans."}
+                <p className="text-xs sm:text-sm text-[#94A3B8] max-w-md mx-auto leading-relaxed">
+                  Enter a target product keyword or direct Etsy listing URL to retrieve verified market evidence and start analyzing.
                 </p>
               </div>
 
               {/* Main Search Card */}
-              <div className="bg-white border border-slate-200 rounded-xl p-6 shadow-xs space-y-5">
+              <div className="bg-[#0F1621] border border-[#263244] rounded-[16px] p-6 shadow-xs space-y-4">
                 <form onSubmit={handleAnalyze} className="space-y-4">
-                  {/* Primary Product Query */}
                   <div className="space-y-1.5">
-                    <div className="flex items-center justify-between">
-                      <label className="text-xs font-semibold text-slate-700 uppercase tracking-wider block">
-                        Target Search Keyword or Product Niche
-                      </label>
-                      <button
-                        type="button"
-                        onClick={() => handleOpenDownloader(null)}
-                        className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 inline-flex items-center gap-1 cursor-pointer transition"
-                      >
-                        <Download className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Listing Downloader</span>
-                      </button>
-                    </div>
+                    <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider block">
+                      Target Search Keyword or Product Niche
+                    </label>
                     <div className="relative">
-                      <Search className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                      <Search className="w-4 h-4 text-[#64748B] absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="e.g. ceramic matcha bowl, leather wallet, digital planner..."
-                        className="w-full h-11 bg-white border border-slate-200 rounded-lg pl-9 pr-3 text-sm text-slate-900 placeholder:text-slate-400 focus:border-slate-900 focus:ring-1 focus:ring-slate-900 outline-none transition"
+                        className="w-full h-11 bg-[#111827] border border-[#263244] focus:border-[#14B8A6] rounded-[10px] pl-10 pr-4 text-xs sm:text-sm text-[#F8FAFC] placeholder:text-[#64748B] outline-none transition"
                         required
                         autoFocus
                       />
                     </div>
                   </div>
 
-                  {/* Etsy URL Detected Banner */}
                   {searchQuery.includes("etsy.com/listing/") && (
-                    <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-900 flex items-center justify-between gap-3">
+                    <div className="p-3 bg-[#14B8A6]/10 border border-[#14B8A6]/30 rounded-[10px] text-xs text-[#F8FAFC] flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 overflow-hidden">
-                        <Sparkles className="w-4 h-4 text-emerald-600 shrink-0" />
-                        <span className="truncate">Etsy Listing Link detected in search.</span>
+                        <Sparkles className="w-4 h-4 text-[#14B8A6] shrink-0" />
+                        <span className="truncate">Etsy Listing Link detected. Ready to download full HD assets and extract 13 tags.</span>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleOpenDownloader({ url: searchQuery })}
-                        className="px-3 py-1 bg-black hover:bg-zinc-800 text-white rounded-lg text-xs font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs border border-black"
+                        className="px-3 py-1 bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] rounded-md text-xs font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
                       >
-                        <Download className="w-3 h-3 text-white" />
+                        <Download className="w-3.5 h-3.5" />
                         <span>Open in Downloader</span>
                       </button>
                     </div>
                   )}
 
-                  {/* Optional Competitor Benchmarking URLs (Progressive Disclosure) */}
-                  <div className="pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowManualUrls(!showManualUrls)}
-                      className="text-xs font-medium text-slate-500 hover:text-slate-800 flex items-center gap-1.5 transition cursor-pointer"
-                    >
-                      <span className="text-slate-400 font-mono text-sm leading-none">{showManualUrls ? "−" : "+"}</span>
-                      <span>Add competitor URLs to benchmark (optional)</span>
-                    </button>
-
-                    {showManualUrls && (
-                      <div className="space-y-2.5 pt-3 mt-2 border-t border-slate-100">
-                        <p className="text-[11px] text-slate-500">
-                          Paste up to 3 live Etsy listing URLs to automatically retrieve images, pricing, and tags:
-                        </p>
-                        {[0, 1, 2].map((idx) => {
-                          const listing = manualListings[idx];
-                          const isFetchingThis = fetchingUrlIndex === idx;
-
-                          return (
-                            <div key={idx} className="space-y-1.5">
-                              <div className="flex gap-2 items-center">
-                                <div className="relative flex-1">
-                                  <input
-                                    type="url"
-                                    value={manualUrls[idx]}
-                                    onChange={(e) => {
-                                      const val = e.target.value;
-                                      const copy = [...manualUrls];
-                                      copy[idx] = val;
-                                      setManualUrls(copy);
-                                      if (val.includes("etsy.com/listing/") || /^\d{8,12}$/.test(val.trim())) {
-                                        handleAutoFetchCompetitorUrl(idx, val);
-                                      }
-                                    }}
-                                    onBlur={() => {
-                                      if (manualUrls[idx] && !manualListings[idx]) {
-                                        handleAutoFetchCompetitorUrl(idx, manualUrls[idx]);
-                                      }
-                                    }}
-                                    placeholder={`Competitor #${idx + 1} Etsy URL (e.g. https://www.etsy.com/listing/...)`}
-                                    className="w-full h-9 bg-white border border-slate-200 rounded-lg pl-3 pr-8 text-xs text-slate-900 placeholder:text-slate-400 focus:border-slate-900 outline-none transition"
-                                  />
-                                  {isFetchingThis && (
-                                    <div className="absolute right-2.5 top-1/2 -translate-y-1/2">
-                                      <RefreshCw className="w-3.5 h-3.5 animate-spin text-slate-400" />
-                                    </div>
-                                  )}
-                                </div>
-
-                                <div className="relative w-24 shrink-0">
-                                  <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400 font-mono">$</span>
-                                  <input
-                                    type="number"
-                                    step="0.5"
-                                    value={manualPrices[idx]}
-                                    onChange={(e) => {
-                                      const copy = [...manualPrices];
-                                      copy[idx] = e.target.value;
-                                      setManualPrices(copy);
-                                    }}
-                                    placeholder="Price"
-                                    className="w-full h-9 bg-white border border-slate-200 rounded-lg pl-6 pr-2 text-xs font-mono text-slate-900 focus:border-slate-900 outline-none"
-                                  />
-                                </div>
-                              </div>
-
-                              {/* Auto-fetched Preview Pill / Card */}
-                              {listing && (
-                                <div className="p-2 bg-slate-50 border border-slate-200/90 rounded-lg flex items-center justify-between gap-3 text-xs">
-                                  <div className="flex items-center gap-2.5 overflow-hidden">
-                                    <div className="w-8 h-8 rounded-md bg-slate-200 overflow-hidden shrink-0 flex items-center justify-center">
-                                      {listing.imageUrl ? (
-                                        <img
-                                          src={listing.imageUrl}
-                                          alt={listing.title}
-                                          className="w-full h-full object-cover"
-                                        />
-                                      ) : (
-                                        <Store className="w-4 h-4 text-slate-400" />
-                                      )}
-                                    </div>
-                                    <div className="overflow-hidden">
-                                      <span className="font-semibold text-slate-900 truncate block text-[11px]">
-                                        {listing.title || `Listing #${idx + 1}`}
-                                      </span>
-                                      <span className="text-[10px] text-slate-500 flex items-center gap-1.5">
-                                        <span>{listing.shopName || "Etsy Shop"}</span>
-                                        {listing.price && <span className="font-mono text-emerald-700 font-semibold">${listing.price}</span>}
-                                        {listing.tags && listing.tags.length > 0 && <span>• {listing.tags.length} tags</span>}
-                                      </span>
-                                    </div>
-                                  </div>
-
-                                  <div className="flex items-center gap-1 shrink-0">
-                                    <button
-                                      type="button"
-                                      onClick={() => handleOpenDownloader(listing)}
-                                      className="h-6 px-2 bg-black hover:bg-zinc-800 text-white rounded text-[10px] font-semibold inline-flex items-center gap-1 transition shadow-2xs cursor-pointer border border-black"
-                                      title="Download high-res photos and copy tags"
-                                    >
-                                      <Download className="w-3 h-3 text-white" />
-                                      <span>Downloader</span>
-                                    </button>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-
-                  {apiNotice && (
-                    <div
-                      className={`p-3 rounded-lg text-xs flex items-start gap-2 border ${
-                        (typeof apiNotice === "object" ? apiNotice.type : "") === "info"
-                          ? "bg-emerald-50 border-emerald-200 text-emerald-900"
-                          : (typeof apiNotice === "object" ? apiNotice.type : "") === "warning"
-                          ? "bg-amber-50 border-amber-200 text-amber-900"
-                          : "bg-slate-50 border-slate-200 text-slate-800"
-                      }`}
-                    >
-                      {(typeof apiNotice === "object" ? apiNotice.type : "") === "info" ? (
-                        <Check className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      ) : (
-                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                      )}
-                      <span>{typeof apiNotice === "object" ? apiNotice.message : apiNotice}</span>
-                    </div>
-                  )}
-
                   {errorMsg && (
-                    <div className="p-3 bg-rose-50 border border-rose-200 rounded-lg text-xs text-rose-700">
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
                       {errorMsg}
                     </div>
                   )}
 
-                  {/* Primary CTA */}
                   <button
                     type="submit"
                     disabled={isLoading || !searchQuery.trim()}
-                    className="font-heading w-full h-11 bg-black hover:bg-zinc-800 disabled:bg-slate-200 disabled:text-slate-400 text-white font-semibold text-sm rounded-lg transition flex items-center justify-center gap-2 shadow-xs cursor-pointer border border-black"
+                    className="w-full h-11 bg-[#14B8A6] hover:bg-[#2DD4BF] disabled:opacity-50 disabled:cursor-not-allowed text-[#021A17] font-bold text-xs sm:text-sm rounded-[10px] transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                   >
                     {isLoading ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-[#021A17] border-t-transparent rounded-full animate-spin" />
                         <span>Gathering marketplace evidence...</span>
                       </>
                     ) : (
@@ -1084,7 +1001,7 @@ export function QuickUserView() {
 
               {/* Clean Presets */}
               <div className="space-y-2">
-                <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider block text-center">
+                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block text-center">
                   Select a category example
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1093,12 +1010,12 @@ export function QuickUserView() {
                       key={preset.name}
                       type="button"
                       onClick={() => handleApplyPreset(preset)}
-                      className="p-3 bg-white border border-slate-200 rounded-lg text-left hover:border-slate-400 transition shadow-2xs group cursor-pointer"
+                      className="p-3 bg-[#0F1621] border border-[#263244] hover:border-[#14B8A6] rounded-[10px] text-left transition shadow-xs group cursor-pointer"
                     >
-                      <div className="font-heading font-semibold text-xs text-slate-900 group-hover:text-emerald-700">
+                      <div className="font-semibold text-xs text-[#F8FAFC] group-hover:text-[#14B8A6] transition">
                         {preset.name}
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mt-0.5">
+                      <div className="text-[11px] text-[#64748B] truncate mt-0.5">
                         {preset.description}
                       </div>
                     </button>
@@ -1106,29 +1023,26 @@ export function QuickUserView() {
                 </div>
               </div>
             </div>
-          )}
-
-          {/* ANALYSIS RESULTS WORKSPACE */}
-          {results && (
+          ) : (
             <div className="space-y-6">
               {/* Project Header Bar */}
-              <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="bg-[#0F1621] border border-[#263244] rounded-[16px] p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="font-heading text-xl sm:text-2xl font-bold text-slate-900 tracking-tight capitalize">
+                    <h1 className="text-xl sm:text-2xl font-bold text-[#F8FAFC] tracking-tight capitalize">
                       {results.mainBroadPhrase || searchQuery}
                     </h1>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#14B8A6]/10 text-[#14B8A6] border border-[#14B8A6]/30">
                       {results.category || "Handmade Products"}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 text-slate-700 border border-slate-200">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#131C29] text-[#94A3B8] border border-[#263244]">
                       {results.mode === "research" ? "Mode A: Market Research" : "Mode B: Listing Optimization"}
                     </span>
                   </div>
 
                   {/* Factual Research Status */}
-                  <div className="flex items-center gap-2 text-xs text-slate-500 flex-wrap pt-0.5">
-                    <span className="font-mono font-medium text-slate-700">
+                  <div className="flex items-center gap-2 text-xs text-[#64748B] flex-wrap pt-0.5">
+                    <span className="font-mono font-medium text-[#94A3B8]">
                       {results.competitorsAnalyzed?.length || 0} listings retrieved
                     </span>
                     <span>•</span>
@@ -1137,7 +1051,7 @@ export function QuickUserView() {
                     <button
                       type="button"
                       onClick={() => setIsDataDetailsOpen(true)}
-                      className="text-emerald-700 hover:text-emerald-800 font-semibold flex items-center gap-1 ml-1 cursor-pointer"
+                      className="text-[#14B8A6] hover:text-[#2DD4BF] font-semibold flex items-center gap-1 ml-1 cursor-pointer transition"
                     >
                       <Database className="w-3.5 h-3.5" />
                       <span>Data sources</span>
@@ -1149,29 +1063,29 @@ export function QuickUserView() {
                   <button
                     type="button"
                     onClick={() => setIsFactsDrawerOpen(true)}
-                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition cursor-pointer"
+                    className="h-9 px-3 bg-[#131C29] hover:bg-[#172231] border border-[#263244] rounded-[8px] text-xs font-semibold text-[#F8FAFC] flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-[#14B8A6]" />
                     <span>Product Facts</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleExportCSV}
-                    className="px-3.5 py-2 bg-white border border-slate-200 hover:border-slate-300 rounded-lg text-xs font-semibold text-slate-700 flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                    className="h-9 px-3 bg-[#131C29] hover:bg-[#172231] border border-[#263244] rounded-[8px] text-xs font-semibold text-[#F8FAFC] flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <Download className="w-3.5 h-3.5 text-slate-500" />
+                    <Download className="w-3.5 h-3.5 text-[#94A3B8]" />
                     <span>Export CSV</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleSaveToHistory}
-                    className="px-3.5 py-2 bg-black hover:bg-zinc-800 rounded-lg text-xs font-semibold text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer border border-black"
+                    className="h-9 px-3.5 bg-[#14B8A6] hover:bg-[#2DD4BF] rounded-[8px] text-xs font-bold text-[#021A17] flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                   >
                     {copiedKey === "save" ? (
                       <>
-                        <Check className="w-3.5 h-3.5" />
+                        <Check className="w-3.5 h-3.5 text-[#021A17]" />
                         <span>Saved</span>
                       </>
                     ) : (
@@ -1182,10 +1096,10 @@ export function QuickUserView() {
               </div>
 
               {/* Permanent Results Navigation */}
-              <div className="w-full max-w-full overflow-hidden border-b border-slate-200">
+              <div className="w-full max-w-full overflow-hidden border-b border-[#263244]">
                 <div
                   ref={tabsContainerRef}
-                  className="flex items-center gap-4 sm:gap-5 overflow-x-auto whitespace-nowrap px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
+                  className="flex items-center gap-4 sm:gap-6 overflow-x-auto whitespace-nowrap px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {[
                     { id: "overview", label: "Overview" },
@@ -1201,11 +1115,17 @@ export function QuickUserView() {
                         key={tab.id}
                         type="button"
                         data-active={isActive ? "true" : "false"}
-                        onClick={() => setActiveTab(tab.id as MainTab)}
+                        onClick={() => {
+                          setActiveTab(tab.id as MainTab);
+                          if (tab.id === "keywords") setCurrentTab("keywords");
+                          else if (tab.id === "competitors") setCurrentTab("competitors");
+                          else if (tab.id === "listing") setCurrentTab("listing");
+                          else if (tab.id === "pricing") setCurrentTab("pricing");
+                        }}
                         className={`py-3 px-1 text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                           isActive
-                            ? "border-emerald-600 text-emerald-700 font-semibold"
-                            : "border-transparent text-slate-500 hover:text-slate-800 hover:border-slate-300 font-medium"
+                            ? "border-[#14B8A6] text-[#14B8A6] font-bold"
+                            : "border-transparent text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#36445A] font-medium"
                         }`}
                       >
                         {tab.label}
@@ -2289,111 +2209,8 @@ export function QuickUserView() {
               )}
             </div>
           )}
-        </main>
-
-        {/* Sleek, Modern Minimalist Footer */}
-        <footer className="border-t border-slate-200 bg-white/90 backdrop-blur-sm mt-auto pt-8 pb-28 md:pb-8 transition-colors">
-          <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-5">
-            {/* Top row: Brand + Quick Utility Shortcuts */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="relative w-7 h-7 rounded-lg overflow-hidden bg-black flex items-center justify-center p-1 shrink-0 border border-black/10 shadow-2xs">
-                  <Image
-                    src="/logo-icon.png"
-                    alt="Etsy Intelligence"
-                    width={20}
-                    height={20}
-                    className="object-contain"
-                    unoptimized
-                  />
-                </div>
-                <div className="flex flex-col sm:flex-row sm:items-center sm:gap-2.5">
-                  <span className="font-heading font-bold text-sm text-slate-900 tracking-tight">
-                    Etsy Intelligence
-                  </span>
-                  <span className="hidden sm:inline-block text-slate-300">•</span>
-                  <span className="text-xs text-slate-500 font-medium">
-                    SEO &amp; Competitor Studio
-                  </span>
-                </div>
-              </div>
-
-              {/* Utility shortcuts */}
-              <div className="flex items-center gap-1 sm:gap-2 flex-wrap text-xs text-slate-600 font-medium">
-                <button
-                  type="button"
-                  onClick={() => handleOpenDownloader(null)}
-                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Download className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Downloader</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsFactsDrawerOpen(true)}
-                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <ShieldCheck className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Product Facts</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsDataDetailsOpen(true)}
-                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <Database className="w-3.5 h-3.5 text-slate-400" />
-                  <span>Data Sources</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsHistoryOpen(true)}
-                  className="px-2.5 py-1.5 rounded-lg hover:bg-slate-100 hover:text-slate-900 transition flex items-center gap-1.5 cursor-pointer"
-                >
-                  <History className="w-3.5 h-3.5 text-slate-400" />
-                  <span>History ({savedCount})</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Subtle Divider */}
-            <div className="border-t border-slate-100" />
-
-            {/* Bottom Row: Engine Status Indicator + Mandatory Etsy Disclaimer */}
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-slate-500">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </span>
-                <span className="text-slate-700 font-semibold text-[11px]">Engine Active</span>
-                <span className="text-slate-300">•</span>
-                <span className="text-slate-500 text-[11px]">Deterministic Evidence Only</span>
-                <span className="text-slate-300">•</span>
-                <button
-                  type="button"
-                  onClick={() => setIsDeviceManagerOpen(true)}
-                  className="text-slate-700 hover:text-black font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
-                >
-                  <span>Devices &amp; Apps</span>
-                </button>
-                <span className="text-slate-300">•</span>
-                <button
-                  type="button"
-                  onClick={() => setIsMasterAdminOpen(true)}
-                  className="text-emerald-700 hover:text-emerald-950 font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
-                  title="Open Master Admin Panel"
-                >
-                  <ShieldAlert className="w-3 h-3 text-emerald-600" />
-                  <span>Master Admin</span>
-                </button>
-              </div>
-
-              <p className="text-left sm:text-right max-w-xl text-[11px] text-slate-500 leading-relaxed">
-                The term &apos;Etsy&apos; is a trademark of Etsy, Inc. This application uses the Etsy API but is not endorsed or certified by Etsy, Inc.
-              </p>
-            </div>
-          </div>
-        </footer>
+        </div>
+      </AppShell>
 
         {/* Devices & Connected Apps Manager Modal */}
         <DevicesAppsModal
@@ -2477,7 +2294,6 @@ export function QuickUserView() {
             }
           }}
         />
-      </div>
     </AccessGate>
   );
 }

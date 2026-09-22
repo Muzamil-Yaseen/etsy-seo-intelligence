@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Manrope, Poppins } from "next/font/google";
+import { Manrope } from "next/font/google";
 import "./globals.css";
 
 const manrope = Manrope({
@@ -9,16 +9,9 @@ const manrope = Manrope({
   display: "swap",
 });
 
-const poppins = Poppins({
-  subsets: ["latin"],
-  variable: "--font-poppins",
-  weight: ["500", "600", "700", "800"],
-  display: "swap",
-});
-
 export const metadata: Metadata = {
-  title: "Etsy SEO Intelligence • Competitor Research & Optimization Studio",
-  description: "Research Etsy competitors, uncover keyword patterns, optimize titles and 13 tags, and plan pricing margins.",
+  title: "Etsy Intelligence • SEO & Competitor Intelligence Platform",
+  description: "Professional Etsy SEO research, competitor intelligence, listing optimization, and market analytics platform.",
 };
 
 export default function RootLayout({
@@ -27,11 +20,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="en" className={`h-full ${manrope.variable} ${poppins.variable}`}>
-      <body className="h-full bg-[#0B1120] text-slate-100 antialiased font-sans">
+    <html lang="en" className={`h-full ${manrope.variable}`}>
+      <body className="h-full bg-[#070B14] text-[#F8FAFC] antialiased font-sans">
         {children}
       </body>
     </html>
   );
 }
-
