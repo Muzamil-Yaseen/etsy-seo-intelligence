@@ -11,6 +11,9 @@ import {
   ArrowRight,
   Calendar,
   Laptop,
+  ShieldAlert,
+  X,
+  Sparkles,
 } from "lucide-react";
 import {
   DEFAULT_APP_SECRET,
@@ -21,6 +24,13 @@ import {
   getActiveAppSecret,
   isAppSecretExpired,
 } from "@/lib/device-manager";
+import {
+  verifyAdminPassword,
+  setAdminAuthenticated,
+  reauthorizeCurrentDevice,
+  getAdminSettings,
+} from "@/lib/admin-settings";
+import { MasterAdminModal } from "@/components/master-admin-modal";
 
 interface AccessGateProps {
   children: React.ReactNode;
@@ -36,6 +46,15 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
   const [showPassword, setShowPassword] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  // Admin Modal & Prompt state
+  const [isAdminModalOpen, setIsAdminModalOpen] = useState(false);
+  const [showAdminPrompt, setShowAdminPrompt] = useState(false);
+  const [adminPasswordInput, setAdminPasswordInput] = useState("");
+  const [adminError, setAdminError] = useState("");
+  const [showAdminPassword, setShowAdminPassword] = useState(false);
+
+  const [settings, setSettings] = useState(getAdminSettings());
   const [validity, setValidity] = useState({
     secret: DEFAULT_APP_SECRET,
     formattedExpiry: "December 1, 2026",
@@ -43,23 +62,24 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
     daysRemaining: 70,
   });
 
-  useEffect(() => {
+  const checkSession = () => {
     setValidity(getSecretValidityInfo());
+    setSettings(getAdminSettings());
 
-    // 1. Check if this device has been explicitly revoked
-    if (isCurrentDeviceRevoked()) {
-      localStorage.removeItem(STORAGE_KEY);
-      setIsUnlocked(false);
-      setErrorMsg("This device's access was revoked by administrator.");
-      onLockChange?.(false);
-      return;
-    }
-
-    // 2. Check if active secret is expired
+    // 1. Check if active secret is expired
     if (isAppSecretExpired()) {
       localStorage.removeItem(STORAGE_KEY);
       setIsUnlocked(false);
       setErrorMsg("Access secret expired on 1st December 2026. Please contact Muzamil for renewed access.");
+      onLockChange?.(false);
+      return;
+    }
+
+    // 2. Check if this device has been explicitly revoked
+    if (isCurrentDeviceRevoked()) {
+      localStorage.removeItem(STORAGE_KEY);
+      setIsUnlocked(false);
+      setErrorMsg("This device's access was revoked. Enter admin password to reauthorize.");
       onLockChange?.(false);
       return;
     }
@@ -89,6 +109,18 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
 
     setIsUnlocked(false);
     onLockChange?.(false);
+  };
+
+  useEffect(() => {
+    checkSession();
+
+    const handleSettingsChanged = () => {
+      setSettings(getAdminSettings());
+      setValidity(getSecretValidityInfo());
+    };
+
+    window.addEventListener("admin-settings-changed", handleSettingsChanged);
+    return () => window.removeEventListener("admin-settings-changed", handleSettingsChanged);
   }, [onLockChange]);
 
   const handleUnlock = (e: React.FormEvent) => {
@@ -103,6 +135,19 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
 
     setIsSubmitting(true);
     setTimeout(() => {
+      // Check if user entered the master admin password "muzamily"
+      if (verifyAdminPassword(trimmed)) {
+        reauthorizeCurrentDevice();
+        registerCurrentDevice("muzamily");
+        setAdminAuthenticated(true);
+        setIsUnlocked(true);
+        onLockChange?.(true);
+        setIsAdminModalOpen(true);
+        setIsSubmitting(false);
+        return;
+      }
+
+      // Check standard app secret
       const result = verifySecretPasscode(trimmed);
 
       if (result.success) {
@@ -116,16 +161,37 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
           );
         } catch {}
 
+        // Clear any previous revoked state
+        reauthorizeCurrentDevice();
         // Register this device in authorized device registry
         registerCurrentDevice(trimmed);
 
         setIsUnlocked(true);
         onLockChange?.(true);
       } else {
-        setErrorMsg(result.error || `Incorrect secret key. Try ${DEFAULT_APP_SECRET} or contact Muzamil.`);
+        setErrorMsg(result.error || "Incorrect secret access key. Please verify your credentials or contact Muzamil.");
       }
       setIsSubmitting(false);
     }, 250);
+  };
+
+  const handleAdminPromptSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAdminError("");
+
+    const trimmed = adminPasswordInput.trim();
+    if (verifyAdminPassword(trimmed)) {
+      reauthorizeCurrentDevice();
+      registerCurrentDevice("muzamily");
+      setAdminAuthenticated(true);
+      setShowAdminPrompt(false);
+      setAdminPasswordInput("");
+      setIsAdminModalOpen(true);
+      setIsUnlocked(true);
+      onLockChange?.(true);
+    } else {
+      setAdminError("Invalid admin master password.");
+    }
   };
 
   // Prevent flash of lock screen while reading localStorage
@@ -145,11 +211,21 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
           <div className="max-w-5xl mx-auto flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span>Etsy Intelligence • Private Team Access Gate</span>
+              <span>{settings.branding.appName} • Private Team Access Gate</span>
             </div>
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <Calendar className="w-3 h-3 text-emerald-400" />
-              <span>Valid till 1st Dec 2026</span>
+            <div className="flex items-center gap-4">
+              <div className="hidden sm:flex items-center gap-2 text-xs text-slate-400">
+                <Calendar className="w-3 h-3 text-emerald-400" />
+                <span>Valid till 1st Dec 2026</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowAdminPrompt(true)}
+                className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-900 hover:bg-zinc-800 text-emerald-400 hover:text-emerald-300 border border-white/15 text-xs font-bold transition cursor-pointer"
+              >
+                <ShieldAlert className="w-3.5 h-3.5" />
+                <span>Admin Login</span>
+              </button>
             </div>
           </div>
         </div>
@@ -161,16 +237,19 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
             <div className="bg-black p-6 text-white text-center relative overflow-hidden border-b border-white/10">
               <div className="w-16 h-16 rounded-2xl bg-white/10 backdrop-blur-sm border border-white/20 p-2 mx-auto mb-3 shadow-md flex items-center justify-center">
                 <img
-                  src="/logo-icon.png"
-                  alt="Etsy Intelligence Logo"
+                  src={settings.branding.logoUrl || "/logo-icon.png"}
+                  alt="App Logo"
                   className="w-full h-full object-contain rounded-xl"
+                  onError={(e) => {
+                    (e.target as HTMLImageElement).src = "/logo-icon.png";
+                  }}
                 />
               </div>
               <h2 className="text-xl sm:text-2xl font-black tracking-tight font-heading">
-                Etsy Intelligence
+                {settings.branding.appName}
               </h2>
               <p className="text-xs sm:text-sm text-slate-400 mt-1">
-                SEO &amp; Competitor Intelligence Studio
+                {settings.branding.appSubtitle}
               </p>
             </div>
 
@@ -205,14 +284,14 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
                         setPasscode(e.target.value);
                         setErrorMsg("");
                       }}
-                      placeholder="e.g. MuzamilTheKing"
+                      placeholder="••••••••••••"
                       autoFocus
                       className="w-full h-12 bg-slate-50 border border-slate-200 focus:border-black focus:bg-white focus:ring-2 focus:ring-black/10 rounded-xl pl-10 pr-11 text-sm sm:text-base font-mono text-slate-900 placeholder:text-slate-400 outline-none transition"
                     />
                     <button
                       type="button"
                       onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition"
+                      className="absolute right-3.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-700 transition cursor-pointer"
                       tabIndex={-1}
                     >
                       {showPassword ? (
@@ -242,24 +321,20 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
                 </button>
               </form>
 
-              {/* Secret Key Quick-Fill Box */}
-              <div className="p-3.5 bg-slate-50 border border-slate-200 rounded-xl text-center space-y-1.5">
-                <span className="text-[11px] text-slate-500 block">
-                  Active Secret (Valid Till 1st Dec 2026):
-                </span>
+              {/* Admin Portal Prompt Access */}
+              <div className="pt-2 border-t border-slate-100 flex items-center justify-between text-xs text-slate-500">
+                <div className="flex items-center gap-1.5">
+                  <Laptop className="w-3.5 h-3.5 text-slate-400" />
+                  <span>Managed by Muzamil</span>
+                </div>
                 <button
                   type="button"
-                  onClick={() => setPasscode(DEFAULT_APP_SECRET)}
-                  className="inline-block font-mono text-xs font-bold text-emerald-800 hover:text-emerald-950 hover:underline bg-emerald-100/70 border border-emerald-200 px-3 py-1.5 rounded-lg transition cursor-pointer"
+                  onClick={() => setShowAdminPrompt(true)}
+                  className="font-bold text-slate-700 hover:text-black transition cursor-pointer flex items-center gap-1"
                 >
-                  {DEFAULT_APP_SECRET} (Click to Fill)
+                  <ShieldAlert className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Admin Panel</span>
                 </button>
-              </div>
-
-              {/* Security info */}
-              <div className="flex items-center justify-center gap-2 text-[11px] text-slate-400 text-center">
-                <Laptop className="w-3.5 h-3.5" />
-                <span>Devices &amp; apps manageable from the main dashboard</span>
               </div>
             </div>
           </div>
@@ -268,20 +343,104 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
         {/* Footer */}
         <footer className="border-t border-white/10 bg-black px-6 py-4 text-center">
           <div className="max-w-5xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-2 text-xs text-slate-400">
-            <span>Etsy Engine • Private Internal Edition</span>
+            <span>{settings.branding.appName} • Private Internal Edition</span>
             <div className="flex items-center gap-1.5 font-semibold text-white">
-              <span>Crafted &amp; Managed</span>
-              <span className="px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 font-bold">
-                by Muzamil
-              </span>
+              <span>{settings.branding.footerCredit}</span>
             </div>
           </div>
         </footer>
+
+        {/* Admin Login Dialog Modal */}
+        {showAdminPrompt && (
+          <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in">
+            <div className="w-full max-w-sm bg-zinc-950 text-white rounded-2xl border border-zinc-800 p-6 shadow-2xl relative space-y-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowAdminPrompt(false);
+                  setAdminError("");
+                  setAdminPasswordInput("");
+                }}
+                className="absolute right-4 top-4 text-zinc-400 hover:text-white cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-emerald-950 border border-emerald-800 text-emerald-400 flex items-center justify-center">
+                  <ShieldAlert className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-heading text-sm font-bold text-white">
+                    Master Admin Access
+                  </h4>
+                  <p className="text-[11px] text-zinc-400">
+                    Enter Muzamil&apos;s master admin password
+                  </p>
+                </div>
+              </div>
+
+              <form onSubmit={handleAdminPromptSubmit} className="space-y-3 pt-1">
+                <div className="relative">
+                  <input
+                    type={showAdminPassword ? "text" : "password"}
+                    value={adminPasswordInput}
+                    onChange={(e) => {
+                      setAdminPasswordInput(e.target.value);
+                      setAdminError("");
+                    }}
+                    placeholder="Enter admin password..."
+                    autoFocus
+                    className="w-full h-11 bg-zinc-900 border border-zinc-800 rounded-xl px-3.5 pr-10 text-sm font-mono text-white placeholder:text-zinc-500 focus:outline-none focus:border-emerald-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowAdminPassword(!showAdminPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white"
+                  >
+                    {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+
+                {adminError && (
+                  <p className="text-xs text-rose-400 font-semibold">{adminError}</p>
+                )}
+
+                <button
+                  type="submit"
+                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition cursor-pointer shadow-md"
+                >
+                  Open Master Dashboard
+                </button>
+              </form>
+            </div>
+          </div>
+        )}
+
+        {/* Master Admin Modal */}
+        <MasterAdminModal
+          isOpen={isAdminModalOpen}
+          onClose={() => {
+            setIsAdminModalOpen(false);
+            checkSession();
+          }}
+        />
       </div>
     );
   }
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <MasterAdminModal
+        isOpen={isAdminModalOpen}
+        onClose={() => {
+          setIsAdminModalOpen(false);
+          checkSession();
+        }}
+      />
+    </>
+  );
 }
 
 export function lockApp() {

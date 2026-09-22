@@ -16,7 +16,10 @@ import {
   MoreHorizontal,
   Download,
   Laptop,
+  ShieldAlert,
+  Sparkles,
 } from "lucide-react";
+import { getAdminSettings } from "@/lib/admin-settings";
 
 export type NavItem = "research" | "keywords" | "competitors" | "listing" | "pricing";
 
@@ -29,6 +32,7 @@ interface HeaderProps {
   onOpenFacts?: () => void;
   onOpenDownloader?: () => void;
   onOpenDeviceManager?: () => void;
+  onOpenMasterAdmin?: () => void;
 }
 
 export function Header({
@@ -40,9 +44,19 @@ export function Header({
   onOpenFacts,
   onOpenDownloader,
   onOpenDeviceManager,
+  onOpenMasterAdmin,
 }: HeaderProps) {
   const [isScrolled, setIsScrolled] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [branding, setBranding] = useState(() => getAdminSettings().branding);
+
+  useEffect(() => {
+    const handleSettingsChanged = () => {
+      setBranding(getAdminSettings().branding);
+    };
+    window.addEventListener("admin-settings-changed", handleSettingsChanged);
+    return () => window.removeEventListener("admin-settings-changed", handleSettingsChanged);
+  }, []);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -122,6 +136,16 @@ export function Header({
   return (
     <>
       {/* ========================================================================= */}
+      {/* 0. ANNOUNCEMENT BANNER (Configurable via Master Admin)                     */}
+      {/* ========================================================================= */}
+      {branding.announcementBanner?.enabled && branding.announcementBanner.text && (
+        <div className="w-full bg-emerald-600 text-white text-xs font-semibold py-2 px-4 text-center tracking-wide flex items-center justify-center gap-2 shadow-xs z-50 relative">
+          <Sparkles className="w-3.5 h-3.5 shrink-0" />
+          <span>{branding.announcementBanner.text}</span>
+        </div>
+      )}
+
+      {/* ========================================================================= */}
       {/* 1. TOP FLOATING GLASS HEADER (Desktop & Mobile Top Bar)                   */}
       {/* ========================================================================= */}
       <div className="sticky top-[10px] sm:top-[14px] z-50 px-2.5 sm:px-6 max-w-[1440px] mx-auto w-full pointer-events-none">
@@ -138,11 +162,11 @@ export function Header({
               className="flex items-center gap-2.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 rounded-xl py-1 transition-opacity hover:opacity-90 cursor-pointer text-left"
               aria-label="Etsy Intelligence Home"
             >
-              {/* New Brand Logo Icon */}
+              {/* Brand Logo Icon */}
               <div className="relative w-[32px] h-[32px] sm:w-[36px] sm:h-[36px] shrink-0">
                 <Image
-                  src="/logo-icon.png"
-                  alt="Etsy Intelligence"
+                  src={branding.logoUrl || "/logo-icon.png"}
+                  alt={branding.appName || "Etsy Intelligence"}
                   fill
                   sizes="(max-width: 640px) 32px, 36px"
                   className="object-contain"
@@ -153,10 +177,10 @@ export function Header({
               {/* Brand Typography */}
               <div className="flex flex-col">
                 <span className="font-heading text-[14px] sm:text-[16px] font-bold text-white tracking-tight leading-none">
-                  Etsy Intelligence
+                  {branding.appName || "Etsy Intelligence"}
                 </span>
                 <span className="hidden sm:inline-block text-[10px] text-emerald-400 font-mono font-medium tracking-wider uppercase mt-1 leading-none">
-                  SEO &amp; Market Studio
+                  {branding.headerBadgeText || "SEO & Market Studio"}
                 </span>
               </div>
             </button>
@@ -227,6 +251,20 @@ export function Header({
               >
                 <Laptop className="w-3.5 h-3.5 text-emerald-400" />
                 <span>Devices &amp; Apps</span>
+              </button>
+            )}
+
+            {/* Master Admin Button */}
+            {onOpenMasterAdmin && (
+              <button
+                type="button"
+                onClick={onOpenMasterAdmin}
+                className="hidden lg:flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-bold text-emerald-400 hover:text-emerald-300 bg-emerald-950/40 hover:bg-emerald-900/50 border border-emerald-600/30 transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 cursor-pointer"
+                aria-label="Master Admin Panel"
+                title="Open Muzamil's Master Admin Panel"
+              >
+                <ShieldAlert className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Admin</span>
               </button>
             )}
 
@@ -464,6 +502,20 @@ export function Header({
                 >
                   <Laptop className="w-4 h-4 text-emerald-400" />
                   <span>Devices &amp; Apps</span>
+                </button>
+              )}
+
+              {onOpenMasterAdmin && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenMasterAdmin();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full h-[50px] px-3.5 rounded-xl text-sm font-bold text-emerald-400 hover:bg-white/10 flex items-center gap-3 transition-colors cursor-pointer"
+                >
+                  <ShieldAlert className="w-4 h-4 text-emerald-400" />
+                  <span>Master Admin Panel</span>
                 </button>
               )}
             </div>

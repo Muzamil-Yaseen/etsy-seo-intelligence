@@ -30,6 +30,7 @@ import {
   AlertTriangle,
   Sparkles,
   Plus,
+  ShieldAlert,
 } from "lucide-react";
 import { AccessGate, lockApp } from "@/components/access-gate";
 import {
@@ -47,6 +48,7 @@ import {
   ListingDownloaderData,
 } from "@/components/listing-downloader-modal";
 import { DevicesAppsModal } from "@/components/devices-apps-modal";
+import { MasterAdminModal } from "@/components/master-admin-modal";
 import { ProductFacts } from "@/lib/product-facts/types";
 
 // Clean example presets
@@ -107,6 +109,7 @@ export function QuickUserView() {
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const [savedCount, setSavedCount] = useState(0);
   const [isDeviceManagerOpen, setIsDeviceManagerOpen] = useState(false);
+  const [isMasterAdminOpen, setIsMasterAdminOpen] = useState(false);
 
   // Loading & Results
   const [isLoading, setIsLoading] = useState(false);
@@ -821,6 +824,7 @@ export function QuickUserView() {
           onOpenFacts={() => setIsFactsDrawerOpen(true)}
           onOpenDownloader={() => handleOpenDownloader(null)}
           onOpenDeviceManager={() => setIsDeviceManagerOpen(true)}
+          onOpenMasterAdmin={() => setIsMasterAdminOpen(true)}
         />
 
         {/* Main Body */}
@@ -2372,6 +2376,16 @@ export function QuickUserView() {
                 >
                   <span>Devices &amp; Apps</span>
                 </button>
+                <span className="text-slate-300">•</span>
+                <button
+                  type="button"
+                  onClick={() => setIsMasterAdminOpen(true)}
+                  className="text-emerald-700 hover:text-emerald-950 font-semibold text-[11px] inline-flex items-center gap-1 cursor-pointer transition"
+                  title="Open Master Admin Panel"
+                >
+                  <ShieldAlert className="w-3 h-3 text-emerald-600" />
+                  <span>Master Admin</span>
+                </button>
               </div>
 
               <p className="text-left sm:text-right max-w-xl text-[11px] text-slate-500 leading-relaxed">
@@ -2385,6 +2399,12 @@ export function QuickUserView() {
         <DevicesAppsModal
           isOpen={isDeviceManagerOpen}
           onClose={() => setIsDeviceManagerOpen(false)}
+        />
+
+        {/* Master Admin Modal */}
+        <MasterAdminModal
+          isOpen={isMasterAdminOpen}
+          onClose={() => setIsMasterAdminOpen(false)}
         />
 
         {/* Product Facts Drawer */}

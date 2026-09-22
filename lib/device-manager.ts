@@ -112,6 +112,11 @@ export function getActiveAppSecret(): string {
     if (envPass) return envPass;
     const custom = localStorage.getItem(STORAGE_KEY_SECRET)?.trim();
     if (custom) return custom;
+    const adminRaw = localStorage.getItem("etsy_master_admin_settings");
+    if (adminRaw) {
+      const parsed = JSON.parse(adminRaw);
+      if (parsed.appSecret?.trim()) return parsed.appSecret.trim();
+    }
   } catch {}
   return DEFAULT_APP_SECRET;
 }
@@ -126,6 +131,14 @@ export function getAppSecretExpiry(): number {
     if (custom) {
       const parsed = Number(custom);
       if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+    const adminRaw = localStorage.getItem("etsy_master_admin_settings");
+    if (adminRaw) {
+      const parsed = JSON.parse(adminRaw);
+      if (parsed.appSecretExpiry) {
+        const parsedTime = new Date(parsed.appSecretExpiry).getTime();
+        if (!isNaN(parsedTime) && parsedTime > 0) return parsedTime;
+      }
     }
   } catch {}
   return new Date(DEFAULT_SECRET_EXPIRY).getTime();
