@@ -50,6 +50,8 @@ import {
 } from "@/components/listing-downloader-modal";
 import { DevicesAppsModal } from "@/components/devices-apps-modal";
 import { MasterAdminModal } from "@/components/master-admin-modal";
+import { CategoryFinderView } from "@/components/category-finder-view";
+import { TagsExtractorView } from "@/components/tags-extractor-view";
 import { ProductFacts } from "@/lib/product-facts/types";
 
 // Clean example presets
@@ -817,6 +819,7 @@ export function QuickUserView() {
         onNewAnalysis={handleNewAnalysis}
         onOpenAdmin={() => setIsMasterAdminOpen(true)}
         onOpenDownloader={() => handleOpenDownloader(null)}
+        onOpenBulkDownloader={() => handleOpenDownloader(null)}
         onOpenFacts={() => setIsFactsDrawerOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         savedCount={savedCount}
@@ -890,18 +893,47 @@ export function QuickUserView() {
               }}
               onOpenHistory={() => setIsHistoryOpen(true)}
             />
+          ) : currentTab === "category" ? (
+            <CategoryFinderView
+              onSearchNiche={(q) => {
+                setSearchQuery(q);
+                setCurrentTab("competitors");
+                handleAnalyze(undefined, q);
+              }}
+            />
+          ) : currentTab === "tags" ? (
+            <TagsExtractorView
+              onAnalyzeNiche={(q) => {
+                setSearchQuery(q);
+                setCurrentTab("competitors");
+                handleAnalyze(undefined, q);
+              }}
+            />
+          ) : currentTab === "pricing" && !results ? (
+            <div className="bg-white dark:bg-[#0B1019] border border-slate-200 dark:border-[#263244] rounded-2xl p-6 shadow-xs">
+              <PricingCalculator
+                prices={
+                  manualListings.some((l) => l?.price)
+                    ? (manualListings.map((l) => l?.price).filter(Boolean) as string[])
+                    : (manualPrices.filter(Boolean) as string[])
+                }
+                productNoun={searchQuery || undefined}
+                initialCogs={productFacts.cogs}
+                initialPrice={productFacts.targetPrice}
+              />
+            </div>
           ) : !results ? (
             /* TARGETED SEARCH WORKSPACE: Shown when in sub-tab with no results yet */
             <div className="max-w-2xl mx-auto py-8 sm:py-12 space-y-6">
               <div className="text-center space-y-3">
-                <div className="inline-flex p-1 bg-[#111827] border border-[#263244] rounded-[10px] text-xs font-semibold">
+                <div className="inline-flex p-1 bg-slate-100 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] rounded-[10px] text-xs font-semibold">
                   <button
                     type="button"
                     onClick={() => setAppMode("research")}
                     className={`px-3.5 py-1.5 rounded-[8px] transition cursor-pointer ${
                       appMode === "research"
-                        ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
-                        : "text-[#94A3B8] hover:text-[#F8FAFC]"
+                        ? "bg-emerald-600 text-white font-bold shadow-xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC]"
                     }`}
                   >
                     Market Research
@@ -911,15 +943,15 @@ export function QuickUserView() {
                     onClick={() => setAppMode("optimize")}
                     className={`px-3.5 py-1.5 rounded-[8px] transition cursor-pointer ${
                       appMode === "optimize"
-                        ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
-                        : "text-[#94A3B8] hover:text-[#F8FAFC]"
+                        ? "bg-emerald-600 text-white font-bold shadow-xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC]"
                     }`}
                   >
                     Listing Optimization
                   </button>
                 </div>
 
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-[#F8FAFC] tracking-tight">
+                <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 dark:text-[#F8FAFC] tracking-tight">
                   {currentTab === "keywords"
                     ? "Keyword Intelligence & Search Grounding"
                     : currentTab === "listing"
@@ -930,26 +962,26 @@ export function QuickUserView() {
                     ? "Pricing & Fee Intelligence Calculator"
                     : "Etsy SEO Market Intelligence"}
                 </h1>
-                <p className="text-xs sm:text-sm text-[#94A3B8] max-w-md mx-auto leading-relaxed">
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-[#94A3B8] max-w-md mx-auto leading-relaxed">
                   Enter a target product keyword or direct Etsy listing URL to retrieve verified market evidence and start analyzing.
                 </p>
               </div>
 
               {/* Main Search Card */}
-              <div className="bg-[#0F1621] border border-[#263244] rounded-[16px] p-6 shadow-xs space-y-4">
+              <div className="bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-[16px] p-6 shadow-xs space-y-4">
                 <form onSubmit={handleAnalyze} className="space-y-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-semibold text-[#94A3B8] uppercase tracking-wider block">
+                    <label className="text-xs font-semibold text-slate-500 dark:text-[#94A3B8] uppercase tracking-wider block">
                       Target Search Keyword or Product Niche
                     </label>
                     <div className="relative">
-                      <Search className="w-4 h-4 text-[#64748B] absolute left-3.5 top-1/2 -translate-y-1/2" />
+                      <Search className="w-4 h-4 text-slate-400 dark:text-[#64748B] absolute left-3.5 top-1/2 -translate-y-1/2" />
                       <input
                         type="text"
                         value={searchQuery}
                         onChange={(e) => setSearchQuery(e.target.value)}
                         placeholder="e.g. ceramic matcha bowl, leather wallet, digital planner..."
-                        className="w-full h-11 bg-[#111827] border border-[#263244] focus:border-[#14B8A6] rounded-[10px] pl-10 pr-4 text-xs sm:text-sm text-[#F8FAFC] placeholder:text-[#64748B] outline-none transition"
+                        className="w-full h-11 bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] focus:border-emerald-500 rounded-[10px] pl-10 pr-4 text-xs sm:text-sm text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 dark:placeholder:text-[#64748B] outline-none transition"
                         required
                         autoFocus
                       />
@@ -957,15 +989,15 @@ export function QuickUserView() {
                   </div>
 
                   {searchQuery.includes("etsy.com/listing/") && (
-                    <div className="p-3 bg-[#14B8A6]/10 border border-[#14B8A6]/30 rounded-[10px] text-xs text-[#F8FAFC] flex items-center justify-between gap-3">
+                    <div className="p-3 bg-emerald-50 dark:bg-[#14B8A6]/10 border border-emerald-200 dark:border-[#14B8A6]/30 rounded-[10px] text-xs text-slate-800 dark:text-[#F8FAFC] flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2 overflow-hidden">
-                        <Sparkles className="w-4 h-4 text-[#14B8A6] shrink-0" />
+                        <Sparkles className="w-4 h-4 text-emerald-600 dark:text-[#14B8A6] shrink-0" />
                         <span className="truncate">Etsy Listing Link detected. Ready to download full HD assets and extract 13 tags.</span>
                       </div>
                       <button
                         type="button"
                         onClick={() => handleOpenDownloader({ url: searchQuery })}
-                        className="px-3 py-1 bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] rounded-md text-xs font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
+                        className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white rounded-md text-xs font-bold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs"
                       >
                         <Download className="w-3.5 h-3.5" />
                         <span>Open in Downloader</span>
@@ -974,7 +1006,7 @@ export function QuickUserView() {
                   )}
 
                   {errorMsg && (
-                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-400">
+                    <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-500 dark:text-red-400">
                       {errorMsg}
                     </div>
                   )}
@@ -982,11 +1014,11 @@ export function QuickUserView() {
                   <button
                     type="submit"
                     disabled={isLoading || !searchQuery.trim()}
-                    className="w-full h-11 bg-[#14B8A6] hover:bg-[#2DD4BF] disabled:opacity-50 disabled:cursor-not-allowed text-[#021A17] font-bold text-xs sm:text-sm rounded-[10px] transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
+                    className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs sm:text-sm rounded-[10px] transition flex items-center justify-center gap-2 cursor-pointer shadow-xs"
                   >
                     {isLoading ? (
                       <>
-                        <div className="w-4 h-4 border-2 border-[#021A17] border-t-transparent rounded-full animate-spin" />
+                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                         <span>Gathering marketplace evidence...</span>
                       </>
                     ) : (
@@ -1001,7 +1033,7 @@ export function QuickUserView() {
 
               {/* Clean Presets */}
               <div className="space-y-2">
-                <span className="text-[11px] font-semibold text-[#64748B] uppercase tracking-wider block text-center">
+                <span className="text-[11px] font-semibold text-slate-400 dark:text-[#64748B] uppercase tracking-wider block text-center">
                   Select a category example
                 </span>
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
@@ -1010,12 +1042,12 @@ export function QuickUserView() {
                       key={preset.name}
                       type="button"
                       onClick={() => handleApplyPreset(preset)}
-                      className="p-3 bg-[#0F1621] border border-[#263244] hover:border-[#14B8A6] rounded-[10px] text-left transition shadow-xs group cursor-pointer"
+                      className="p-3 bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] hover:border-emerald-500 rounded-[10px] text-left transition shadow-xs group cursor-pointer"
                     >
-                      <div className="font-semibold text-xs text-[#F8FAFC] group-hover:text-[#14B8A6] transition">
+                      <div className="font-semibold text-xs text-slate-800 dark:text-[#F8FAFC] group-hover:text-emerald-600 dark:group-hover:text-[#14B8A6] transition">
                         {preset.name}
                       </div>
-                      <div className="text-[11px] text-[#64748B] truncate mt-0.5">
+                      <div className="text-[11px] text-slate-400 dark:text-[#64748B] truncate mt-0.5">
                         {preset.description}
                       </div>
                     </button>
@@ -1026,23 +1058,23 @@ export function QuickUserView() {
           ) : (
             <div className="space-y-6">
               {/* Project Header Bar */}
-              <div className="bg-[#0F1621] border border-[#263244] rounded-[16px] p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-[16px] p-5 sm:p-6 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div className="space-y-1">
                   <div className="flex items-center gap-2.5 flex-wrap">
-                    <h1 className="text-xl sm:text-2xl font-bold text-[#F8FAFC] tracking-tight capitalize">
+                    <h1 className="text-xl sm:text-2xl font-bold text-slate-900 dark:text-[#F8FAFC] tracking-tight capitalize">
                       {results.mainBroadPhrase || searchQuery}
                     </h1>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#14B8A6]/10 text-[#14B8A6] border border-[#14B8A6]/30">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 dark:bg-[#14B8A6]/10 text-emerald-700 dark:text-[#14B8A6] border border-emerald-200 dark:border-[#14B8A6]/30">
                       {results.category || "Handmade Products"}
                     </span>
-                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-[#131C29] text-[#94A3B8] border border-[#263244]">
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-slate-100 dark:bg-[#131C29] text-slate-600 dark:text-[#94A3B8] border border-slate-200 dark:border-[#263244]">
                       {results.mode === "research" ? "Mode A: Market Research" : "Mode B: Listing Optimization"}
                     </span>
                   </div>
 
                   {/* Factual Research Status */}
-                  <div className="flex items-center gap-2 text-xs text-[#64748B] flex-wrap pt-0.5">
-                    <span className="font-mono font-medium text-[#94A3B8]">
+                  <div className="flex items-center gap-2 text-xs text-slate-500 dark:text-[#64748B] flex-wrap pt-0.5">
+                    <span className="font-mono font-medium text-slate-700 dark:text-[#94A3B8]">
                       {results.competitorsAnalyzed?.length || 0} listings retrieved
                     </span>
                     <span>•</span>
@@ -1051,7 +1083,7 @@ export function QuickUserView() {
                     <button
                       type="button"
                       onClick={() => setIsDataDetailsOpen(true)}
-                      className="text-[#14B8A6] hover:text-[#2DD4BF] font-semibold flex items-center gap-1 ml-1 cursor-pointer transition"
+                      className="text-emerald-600 dark:text-[#14B8A6] hover:text-emerald-700 dark:hover:text-[#2DD4BF] font-semibold flex items-center gap-1 ml-1 cursor-pointer transition"
                     >
                       <Database className="w-3.5 h-3.5" />
                       <span>Data sources</span>
@@ -1063,29 +1095,29 @@ export function QuickUserView() {
                   <button
                     type="button"
                     onClick={() => setIsFactsDrawerOpen(true)}
-                    className="h-9 px-3 bg-[#131C29] hover:bg-[#172231] border border-[#263244] rounded-[8px] text-xs font-semibold text-[#F8FAFC] flex items-center gap-1.5 transition cursor-pointer"
+                    className="h-9 px-3 bg-slate-50 dark:bg-[#131C29] hover:bg-slate-100 dark:hover:bg-[#172231] border border-slate-200 dark:border-[#263244] rounded-[8px] text-xs font-semibold text-slate-700 dark:text-[#F8FAFC] flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <ShieldCheck className="w-3.5 h-3.5 text-[#14B8A6]" />
+                    <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-[#14B8A6]" />
                     <span>Product Facts</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleExportCSV}
-                    className="h-9 px-3 bg-[#131C29] hover:bg-[#172231] border border-[#263244] rounded-[8px] text-xs font-semibold text-[#F8FAFC] flex items-center gap-1.5 transition cursor-pointer"
+                    className="h-9 px-3 bg-slate-50 dark:bg-[#131C29] hover:bg-slate-100 dark:hover:bg-[#172231] border border-slate-200 dark:border-[#263244] rounded-[8px] text-xs font-semibold text-slate-700 dark:text-[#F8FAFC] flex items-center gap-1.5 transition cursor-pointer"
                   >
-                    <Download className="w-3.5 h-3.5 text-[#94A3B8]" />
+                    <Download className="w-3.5 h-3.5 text-slate-500 dark:text-[#94A3B8]" />
                     <span>Export CSV</span>
                   </button>
 
                   <button
                     type="button"
                     onClick={handleSaveToHistory}
-                    className="h-9 px-3.5 bg-[#14B8A6] hover:bg-[#2DD4BF] rounded-[8px] text-xs font-bold text-[#021A17] flex items-center gap-1.5 transition shadow-xs cursor-pointer"
+                    className="h-9 px-3.5 bg-emerald-600 hover:bg-emerald-700 rounded-[8px] text-xs font-bold text-white flex items-center gap-1.5 transition shadow-xs cursor-pointer"
                   >
                     {copiedKey === "save" ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-[#021A17]" />
+                        <Check className="w-3.5 h-3.5 text-white" />
                         <span>Saved</span>
                       </>
                     ) : (
@@ -1096,7 +1128,7 @@ export function QuickUserView() {
               </div>
 
               {/* Permanent Results Navigation */}
-              <div className="w-full max-w-full overflow-hidden border-b border-[#263244]">
+              <div className="w-full max-w-full overflow-hidden border-b border-slate-200 dark:border-[#263244]">
                 <div
                   ref={tabsContainerRef}
                   className="flex items-center gap-4 sm:gap-6 overflow-x-auto whitespace-nowrap px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
@@ -1124,8 +1156,8 @@ export function QuickUserView() {
                         }}
                         className={`py-3 px-1 text-xs sm:text-sm border-b-2 transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
                           isActive
-                            ? "border-[#14B8A6] text-[#14B8A6] font-bold"
-                            : "border-transparent text-[#94A3B8] hover:text-[#F8FAFC] hover:border-[#36445A] font-medium"
+                            ? "border-emerald-600 text-emerald-600 dark:border-emerald-400 dark:text-emerald-400 font-bold"
+                            : "border-transparent text-slate-500 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:border-slate-300 dark:hover:border-[#36445A] font-medium"
                         }`}
                       >
                         {tab.label}

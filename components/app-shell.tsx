@@ -8,9 +8,12 @@ import {
   FileText,
   Store,
   Tag,
+  FolderTree,
   Cpu,
   History,
   Activity,
+  DollarSign,
+  Download,
   Settings,
   Shield,
   Menu,
@@ -18,15 +21,23 @@ import {
   Plus,
   LogOut,
   Sparkles,
+  Layers,
+  ChevronDown,
+  Bell,
+  PanelLeftClose,
+  PanelLeft,
 } from "lucide-react";
 import { lockApp } from "@/components/access-gate";
 import { getAdminSettings } from "@/lib/admin-settings";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 export type ViewTab =
   | "dashboard"
+  | "competitors"
+  | "category"
+  | "tags"
   | "keywords"
   | "listing"
-  | "competitors"
   | "library"
   | "ai"
   | "reports"
@@ -39,6 +50,7 @@ interface AppShellProps {
   onNewAnalysis: () => void;
   onOpenAdmin: () => void;
   onOpenDownloader: () => void;
+  onOpenBulkDownloader?: () => void;
   onOpenFacts: () => void;
   onOpenHistory: () => void;
   savedCount?: number;
@@ -51,12 +63,14 @@ export function AppShell({
   onNewAnalysis,
   onOpenAdmin,
   onOpenDownloader,
+  onOpenBulkDownloader,
   onOpenFacts,
   onOpenHistory,
   savedCount = 0,
   children,
 }: AppShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [branding, setBranding] = useState(() => getAdminSettings().branding);
 
   useEffect(() => {
@@ -79,15 +93,16 @@ export function AppShell({
     };
   }, [mobileMenuOpen]);
 
-  // Main navigation items
-  const mainNavItems: { id: ViewTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-    { id: "dashboard", label: "Dashboard", icon: LayoutDashboard },
-    { id: "keywords", label: "Keyword Research", icon: Search },
-    { id: "listing", label: "Listing Analyzer", icon: FileText },
+  // Main navigation items requested:
+  // 1st: Competitor Research
+  // 2nd: Category Finder
+  // 3rd: Tags Extractor
+  // 4th: Main Keyword Finder
+  const primaryNavItems: { id: ViewTab; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
     { id: "competitors", label: "Competitor Research", icon: Store },
-    { id: "library", label: "Keyword Library", icon: Tag },
-    { id: "ai", label: "AI Intelligence", icon: Cpu },
-    { id: "reports", label: "Saved Reports", icon: History },
+    { id: "category", label: "Category Finder", icon: FolderTree },
+    { id: "tags", label: "Tags Extractor", icon: Tag },
+    { id: "keywords", label: "Main Keyword Finder", icon: Search },
   ];
 
   const handleTabClick = (tab: ViewTab) => {
@@ -103,12 +118,16 @@ export function AppShell({
     switch (currentTab) {
       case "dashboard":
         return { title: "Dashboard", breadcrumb: "Overview" };
+      case "competitors":
+        return { title: "Competitor Research", breadcrumb: "Benchmark Studio" };
+      case "category":
+        return { title: "Category Finder", breadcrumb: "Etsy Taxonomy & Media" };
+      case "tags":
+        return { title: "Tags Extractor", breadcrumb: "13-Tag Saturation" };
       case "keywords":
-        return { title: "Keyword Research", breadcrumb: "Market Intelligence" };
+        return { title: "Main Keyword Finder", breadcrumb: "Search Volume & Intent" };
       case "listing":
         return { title: "Listing Analyzer", breadcrumb: "Optimization" };
-      case "competitors":
-        return { title: "Competitor Research", breadcrumb: "Benchmark" };
       case "library":
         return { title: "Keyword Library", breadcrumb: "Assets" };
       case "ai":
@@ -116,29 +135,34 @@ export function AppShell({
       case "pricing":
         return { title: "Pricing Calculator", breadcrumb: "Fee & Margin Intelligence" };
       case "downloader":
-        return { title: "Listing Downloader", breadcrumb: "Media & Metadata Extraction" };
+        return { title: "Media Downloader", breadcrumb: "Photos, Videos & Zip" };
       default:
-        return { title: "Dashboard", breadcrumb: "Overview" };
+        return { title: "Competitor Research", breadcrumb: "Overview" };
     }
   };
 
   const pageInfo = getPageTitle();
 
   return (
-    <div className="flex h-screen w-full bg-[#070B14] text-[#F8FAFC] antialiased overflow-hidden font-sans">
+    <div className="flex h-screen w-full bg-[#F8FAFC] dark:bg-[#070B14] text-slate-900 dark:text-[#F8FAFC] antialiased overflow-hidden font-sans transition-colors duration-200">
       {/* ========================================================================= */}
-      {/* 1. DESKTOP FIXED SIDEBAR (250px)                                          */}
+      {/* 1. DESKTOP FIXED SIDEBAR                                                  */}
       {/* ========================================================================= */}
-      <aside className="hidden md:flex w-[250px] border-r border-[#263244] bg-[#0B1019] flex-col justify-between shrink-0 select-none z-30">
+      <aside
+        className={`hidden md:flex flex-col justify-between shrink-0 select-none z-30 transition-all duration-300 bg-white dark:bg-[#0B1019] border-r border-slate-200 dark:border-[#263244] shadow-xs ${
+          sidebarCollapsed ? "w-[72px]" : "w-[260px]"
+        }`}
+      >
         <div>
           {/* Top Logo & App Title */}
-          <div className="h-16 px-5 border-b border-[#263244] flex items-center justify-between">
+          <div className="h-16 px-4 border-b border-slate-200 dark:border-[#263244] flex items-center justify-between">
             <button
               type="button"
-              onClick={() => onSelectTab("dashboard")}
-              className="flex items-center gap-2.5 text-left cursor-pointer focus:outline-none"
+              onClick={() => onSelectTab("competitors")}
+              className="flex items-center gap-2.5 text-left cursor-pointer focus:outline-none min-w-0"
+              title={branding.appName || "Etsy Intelligence"}
             >
-              <div className="relative w-8 h-8 rounded-[8px] bg-[#131C29] border border-[#263244] p-1 shrink-0">
+              <div className="relative w-8 h-8 rounded-xl bg-emerald-50 dark:bg-[#131C29] border border-emerald-200 dark:border-[#263244] p-1 shrink-0 flex items-center justify-center">
                 <Image
                   src={branding.logoUrl || "/logo-icon.png"}
                   alt="Logo"
@@ -149,24 +173,41 @@ export function AppShell({
                   unoptimized
                 />
               </div>
-              <div className="flex flex-col">
-                <span className="text-sm font-bold text-[#F8FAFC] tracking-tight leading-none">
-                  {branding.appName || "Etsy Intelligence"}
-                </span>
-                <span className="text-[10px] text-[#94A3B8] font-medium tracking-wider uppercase mt-1 leading-none">
-                  SEO Platform
-                </span>
-              </div>
+              {!sidebarCollapsed && (
+                <div className="flex flex-col min-w-0">
+                  <div className="flex items-center gap-1">
+                    <span className="text-sm font-bold text-slate-900 dark:text-[#F8FAFC] tracking-tight truncate leading-none">
+                      {branding.appName || "Etsy Intelligence"}
+                    </span>
+                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                  </div>
+                  <span className="text-[10px] text-emerald-600 dark:text-[#10B981] font-semibold tracking-wider uppercase mt-1 leading-none">
+                    SEO Platform
+                  </span>
+                </div>
+              )}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
+              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
+              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {sidebarCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
             </button>
           </div>
 
-          {/* Main Navigation */}
-          <div className="p-3 space-y-6 overflow-y-auto max-h-[calc(100vh-180px)]">
+          {/* Navigation Links Area */}
+          <div className="p-3 space-y-6 overflow-y-auto max-h-[calc(100vh-160px)]">
+            {/* Primary Section */}
             <div className="space-y-1">
-              <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                Intelligence
-              </div>
-              {mainNavItems.map((item) => {
+              {!sidebarCollapsed && (
+                <div className="px-3 pb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#64748B]">
+                  Main Navigation
+                </div>
+              )}
+              {primaryNavItems.map((item) => {
                 const Icon = item.icon;
                 const isActive = currentTab === item.id;
                 return (
@@ -174,100 +215,138 @@ export function AppShell({
                     key={item.id}
                     type="button"
                     onClick={() => handleTabClick(item.id)}
-                    className={`w-full h-10 px-3 rounded-[10px] text-sm font-medium flex items-center gap-2.5 transition cursor-pointer text-left relative ${
+                    title={sidebarCollapsed ? item.label : undefined}
+                    className={`w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 transition cursor-pointer text-left relative ${
                       isActive
-                        ? "bg-[#14B8A6]/10 text-[#F8FAFC] font-semibold"
-                        : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.04]"
+                        ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-l-3 border-emerald-600 dark:border-emerald-500 shadow-xs"
+                        : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                     }`}
                   >
-                    {isActive && (
-                      <span className="absolute left-0 top-2 bottom-2 w-1 bg-[#14B8A6] rounded-r" />
-                    )}
-                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-[#2DD4BF]" : "text-[#64748B]"}`} />
-                    <span className="truncate">{item.label}</span>
-                    {item.id === "reports" && savedCount > 0 && (
-                      <span className="ml-auto text-[11px] px-1.5 py-0.5 rounded-full bg-[#172231] text-[#94A3B8]">
-                        {savedCount}
-                      </span>
-                    )}
+                    <Icon className={`w-4 h-4 shrink-0 ${isActive ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-[#64748B]"}`} />
+                    {!sidebarCollapsed && <span className="truncate">{item.label}</span>}
                   </button>
                 );
               })}
             </div>
 
-            {/* Secondary Navigation */}
+            {/* TOOLS Section */}
             <div className="space-y-1">
-              <div className="px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-[#64748B]">
-                Tools &amp; Settings
-              </div>
+              {!sidebarCollapsed && (
+                <div className="px-3 pb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#64748B]">
+                  Tools
+                </div>
+              )}
+
+              {/* 1st: Pricing Calculator */}
               <button
                 type="button"
-                onClick={() => onSelectTab("pricing")}
-                className={`w-full h-10 px-3 rounded-[10px] text-sm font-medium flex items-center gap-2.5 transition cursor-pointer text-left relative ${
+                onClick={() => handleTabClick("pricing")}
+                title={sidebarCollapsed ? "Pricing Calculator" : undefined}
+                className={`w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 transition cursor-pointer text-left relative ${
                   currentTab === "pricing"
-                    ? "bg-[#14B8A6]/10 text-[#F8FAFC] font-semibold"
-                    : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.04]"
+                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-l-3 border-emerald-600 dark:border-emerald-500 shadow-xs"
+                    : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.04]"
                 }`}
               >
-                {currentTab === "pricing" && (
-                  <span className="absolute left-0 top-2 bottom-2 w-1 bg-[#14B8A6] rounded-r" />
-                )}
-                <Activity className="w-4 h-4 text-[#64748B]" />
-                <span>Pricing Calculator</span>
+                <DollarSign className={`w-4 h-4 shrink-0 ${currentTab === "pricing" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-[#64748B]"}`} />
+                {!sidebarCollapsed && <span className="truncate">Pricing Calculator</span>}
               </button>
 
+              {/* 2nd: Media Downloader */}
               <button
                 type="button"
                 onClick={onOpenDownloader}
-                className="w-full h-10 px-3 rounded-[10px] text-sm font-medium flex items-center gap-2.5 text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.04] transition cursor-pointer text-left"
+                title={sidebarCollapsed ? "Media Downloader" : undefined}
+                className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.04] transition cursor-pointer text-left"
               >
-                <FileText className="w-4 h-4 text-[#64748B]" />
-                <span>Media Downloader</span>
+                <Download className="w-4 h-4 shrink-0 text-slate-400 dark:text-[#64748B]" />
+                {!sidebarCollapsed && <span className="truncate">Media Downloader</span>}
               </button>
 
+              {/* a) Bulk Listing Downloader */}
+              {!sidebarCollapsed && (
+                <button
+                  type="button"
+                  onClick={onOpenBulkDownloader || onOpenDownloader}
+                  className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] font-medium flex items-center gap-2 text-slate-500 dark:text-[#94A3B8] hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition cursor-pointer text-left"
+                >
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className="truncate">Bulk Listing Downloader</span>
+                </button>
+              )}
+            </div>
+
+            {/* HISTORY Section */}
+            <div className="space-y-1">
+              {!sidebarCollapsed && (
+                <div className="px-3 pb-1.5 text-[10.5px] font-bold uppercase tracking-wider text-slate-400 dark:text-[#64748B]">
+                  History
+                </div>
+              )}
               <button
                 type="button"
-                onClick={onOpenFacts}
-                className="w-full h-10 px-3 rounded-[10px] text-sm font-medium flex items-center gap-2.5 text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.04] transition cursor-pointer text-left"
+                onClick={onOpenHistory}
+                title={sidebarCollapsed ? `Saved History (${savedCount})` : undefined}
+                className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.04] transition cursor-pointer text-left"
               >
-                <Settings className="w-4 h-4 text-[#64748B]" />
-                <span>Product Facts</span>
+                <History className="w-4 h-4 shrink-0 text-slate-400 dark:text-[#64748B]" />
+                {!sidebarCollapsed && (
+                  <>
+                    <span className="truncate">Saved Reports</span>
+                    {savedCount > 0 && (
+                      <span className="ml-auto text-[10px] px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-[#172231] text-emerald-800 dark:text-emerald-400 font-bold">
+                        {savedCount}
+                      </span>
+                    )}
+                  </>
+                )}
               </button>
+            </div>
 
-              {/* Admin Button */}
+            {/* ADMIN & SETTINGS */}
+            <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-[#1E293B]">
               <button
                 type="button"
                 onClick={onOpenAdmin}
-                className="w-full h-10 px-3 rounded-[10px] text-sm font-semibold flex items-center gap-2.5 text-[#14B8A6] hover:text-[#2DD4BF] hover:bg-[#14B8A6]/10 transition cursor-pointer text-left"
+                title={sidebarCollapsed ? "Admin Settings" : undefined}
+                className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8] hover:text-emerald-600 dark:hover:text-[#2DD4BF] hover:bg-slate-100 dark:hover:bg-[#14B8A6]/10 transition cursor-pointer text-left"
               >
-                <Shield className="w-4 h-4 text-[#14B8A6]" />
-                <span>Admin</span>
+                <Shield className="w-4 h-4 shrink-0 text-emerald-600 dark:text-[#14B8A6]" />
+                {!sidebarCollapsed && <span>Admin Panel</span>}
               </button>
             </div>
           </div>
         </div>
 
         {/* Bottom User Area */}
-        <div className="p-3 border-t border-[#263244] bg-[#0F1621] flex items-center justify-between">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-[#131C29] border border-[#263244] flex items-center justify-center font-bold text-xs text-[#14B8A6]">
+        <div className="p-3 border-t border-slate-200 dark:border-[#263244] bg-slate-50 dark:bg-[#0F1621] flex items-center justify-between">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
               M
             </div>
-            <div className="flex flex-col">
-              <span className="text-xs font-bold text-[#F8FAFC] leading-none">Muzamil</span>
-              <span className="text-[10px] text-[#14B8A6] font-medium leading-none mt-1">Owner</span>
-            </div>
+            {!sidebarCollapsed && (
+              <div className="flex flex-col min-w-0">
+                <span className="text-xs font-bold text-slate-900 dark:text-[#F8FAFC] leading-none truncate">
+                  Muzamil
+                </span>
+                <span className="text-[10px] text-emerald-600 dark:text-[#10B981] font-semibold leading-none mt-1">
+                  Owner
+                </span>
+              </div>
+            )}
           </div>
 
-          <button
-            type="button"
-            onClick={() => lockApp()}
-            className="w-8 h-8 rounded-[8px] flex items-center justify-center text-[#64748B] hover:text-[#F43F5E] hover:bg-[#131C29] transition cursor-pointer"
-            title="Lock application session"
-            aria-label="Lock application session"
-          >
-            <LogOut className="w-4 h-4" />
-          </button>
+          {!sidebarCollapsed && (
+            <button
+              type="button"
+              onClick={() => lockApp()}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-[#131C29] transition cursor-pointer shrink-0"
+              title="Lock application session"
+              aria-label="Lock application session"
+            >
+              <LogOut className="w-4 h-4" />
+            </button>
+          )}
         </div>
       </aside>
 
@@ -277,69 +356,70 @@ export function AppShell({
       <div className="flex-1 flex flex-col min-w-0 overflow-hidden">
         {/* Announcement Banner (if configured) */}
         {branding.announcementBanner?.enabled && branding.announcementBanner.text && (
-          <div className="bg-[#14B8A6] text-[#021A17] text-xs font-semibold py-1.5 px-4 text-center tracking-wide flex items-center justify-center gap-2 shrink-0">
+          <div className="bg-emerald-600 text-white text-xs font-semibold py-1.5 px-4 text-center tracking-wide flex items-center justify-center gap-2 shrink-0">
             <Sparkles className="w-3.5 h-3.5 shrink-0" />
             <span>{branding.announcementBanner.text}</span>
           </div>
         )}
 
-        {/* Top Bar (64px) */}
-        <header className="h-16 border-b border-[#1E293B] bg-[#0B1019] px-4 sm:px-6 flex items-center justify-between shrink-0 select-none z-20">
-          {/* Left: Current Page Title & Breadcrumb */}
+        {/* Top Header Bar (Corelystic Inspired) */}
+        <header className="h-16 border-b border-slate-200 dark:border-[#1E293B] bg-white dark:bg-[#0B1019] px-4 sm:px-6 flex items-center justify-between shrink-0 select-none z-20 shadow-xs">
+          {/* Left: Mobile Toggle & Breadcrumb */}
           <div className="flex items-center gap-3">
             <button
               type="button"
               onClick={() => setMobileMenuOpen(true)}
-              className="md:hidden w-9 h-9 rounded-[8px] bg-[#111827] border border-[#263244] flex items-center justify-center text-[#F8FAFC] hover:bg-[#172231] cursor-pointer"
+              className="md:hidden w-9 h-9 rounded-xl bg-slate-100 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] flex items-center justify-center text-slate-800 dark:text-[#F8FAFC] hover:bg-slate-200 cursor-pointer"
               aria-label="Open navigation menu"
             >
               <Menu className="w-4 h-4" />
             </button>
 
             <div className="flex items-center gap-2">
-              <h1 className="text-base sm:text-lg font-bold text-[#F8FAFC] tracking-tight">
+              <h1 className="text-sm sm:text-base font-bold text-slate-900 dark:text-[#F8FAFC] tracking-tight">
                 {pageInfo.title}
               </h1>
-              <span className="hidden sm:inline-block text-xs text-[#36445A]">/</span>
-              <span className="hidden sm:inline-block text-xs text-[#94A3B8]">
+              <span className="hidden sm:inline-block text-xs text-slate-300 dark:text-[#36445A]">/</span>
+              <span className="hidden sm:inline-block text-xs text-slate-500 dark:text-[#94A3B8]">
                 {pageInfo.breadcrumb}
               </span>
             </div>
           </div>
 
-          {/* Right: AI Status, Quick Actions, and Profile */}
-          <div className="flex items-center gap-2.5 sm:gap-3">
-            {/* AI Provider Status Pill */}
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#0F1621] border border-[#263244] text-xs text-[#94A3B8]">
-              <span className="w-2 h-2 rounded-full bg-[#10B981] animate-pulse" />
-              <span>Groq Online</span>
+          {/* Center/Right: Quick Search, Bell, Theme Toggle Switch, and Actions */}
+          <div className="flex items-center gap-3">
+            {/* Quick Search Shortcut Display (Corelystic Style) */}
+            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] text-xs text-slate-400">
+              <Search className="w-3.5 h-3.5 text-slate-400" />
+              <span>Search niche or URL...</span>
+              <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-[#1F2937] border border-slate-200 dark:border-[#374151] text-[10px] font-mono text-slate-500">
+                ⌘ + F
+              </kbd>
             </div>
 
-            {/* Primary Action Button: New Analysis */}
+            {/* Groq Live Status */}
+            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] text-[11px] text-slate-600 dark:text-[#94A3B8]">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+              <span>AI Grounded</span>
+            </div>
+
+            {/* Custom Sun/Moon Switch Toggle Provided by User */}
+            <ThemeToggle />
+
+            {/* New Analysis Primary CTA */}
             <button
               type="button"
               onClick={onNewAnalysis}
-              className="h-9 px-3.5 rounded-[10px] bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+              className="h-9 px-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shadow-xs"
             >
               <Plus className="w-3.5 h-3.5" />
-              <span>New Analysis</span>
-            </button>
-
-            {/* Admin Shortcut */}
-            <button
-              type="button"
-              onClick={onOpenAdmin}
-              className="hidden sm:flex items-center gap-1.5 h-9 px-3 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-xs font-medium text-[#E2E8F0] transition cursor-pointer"
-              title="Open Admin Panel"
-            >
-              <Shield className="w-3.5 h-3.5 text-[#14B8A6]" />
-              <span>Admin</span>
+              <span className="hidden sm:inline">New Analysis</span>
             </button>
           </div>
         </header>
 
         {/* Scrollable Page Content Container */}
-        <main className="flex-1 overflow-y-auto bg-[#070B14] p-4 sm:p-6 lg:p-8">
+        <main className="flex-1 overflow-y-auto bg-[#F8FAFC] dark:bg-[#070B14] p-4 sm:p-6 lg:p-8">
           <div className="max-w-[1500px] mx-auto w-full">
             {children}
           </div>
@@ -351,20 +431,18 @@ export function AppShell({
       {/* ========================================================================= */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-[9999] md:hidden flex">
-          {/* Backdrop */}
           <div
-            className="fixed inset-0 bg-black/70 backdrop-blur-xs transition-opacity"
+            className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity"
             onClick={() => setMobileMenuOpen(false)}
             aria-hidden="true"
           />
 
-          {/* Drawer Panel */}
-          <div className="relative w-[280px] max-w-[80vw] bg-[#0B1019] border-r border-[#263244] h-full flex flex-col justify-between p-4 z-10 shadow-2xl animate-in slide-in-from-left duration-200">
+          <div className="relative w-[280px] max-w-[80vw] bg-white dark:bg-[#0B1019] border-r border-slate-200 dark:border-[#263244] h-full flex flex-col justify-between p-4 z-10 shadow-2xl">
             <div>
               {/* Header */}
-              <div className="flex items-center justify-between pb-4 mb-3 border-b border-[#263244]">
+              <div className="flex items-center justify-between pb-4 mb-3 border-b border-slate-200 dark:border-[#263244]">
                 <div className="flex items-center gap-2">
-                  <div className="relative w-7 h-7 rounded-[8px] bg-[#131C29] border border-[#263244] p-1">
+                  <div className="relative w-7 h-7 rounded-lg bg-emerald-50 dark:bg-[#131C29] border border-emerald-200 dark:border-[#263244] p-1">
                     <Image
                       src={branding.logoUrl || "/logo-icon.png"}
                       alt="Logo"
@@ -374,14 +452,14 @@ export function AppShell({
                       unoptimized
                     />
                   </div>
-                  <span className="font-bold text-sm text-[#F8FAFC]">
+                  <span className="font-bold text-sm text-slate-900 dark:text-[#F8FAFC]">
                     {branding.appName || "Etsy Intelligence"}
                   </span>
                 </div>
                 <button
                   type="button"
                   onClick={() => setMobileMenuOpen(false)}
-                  className="w-8 h-8 rounded-[8px] flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#131C29]"
+                  className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 dark:text-[#94A3B8]"
                 >
                   <X className="w-4 h-4" />
                 </button>
@@ -389,7 +467,7 @@ export function AppShell({
 
               {/* Nav Items */}
               <div className="space-y-1">
-                {mainNavItems.map((item) => {
+                {primaryNavItems.map((item) => {
                   const Icon = item.icon;
                   const isActive = currentTab === item.id;
                   return (
@@ -397,29 +475,26 @@ export function AppShell({
                       key={item.id}
                       type="button"
                       onClick={() => handleTabClick(item.id)}
-                      className={`w-full h-11 px-3 rounded-[10px] text-sm font-medium flex items-center gap-3 transition cursor-pointer text-left ${
+                      className={`w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 transition cursor-pointer text-left ${
                         isActive
-                          ? "bg-[#14B8A6]/10 text-[#F8FAFC] font-semibold border-l-2 border-[#14B8A6]"
-                          : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.04]"
+                          ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-l-3 border-emerald-600"
+                          : "text-slate-600 dark:text-[#94A3B8] hover:bg-slate-50 dark:hover:bg-white/[0.04]"
                       }`}
                     >
-                      <Icon className={`w-4 h-4 ${isActive ? "text-[#2DD4BF]" : "text-[#64748B]"}`} />
+                      <Icon className={`w-4 h-4 ${isActive ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
                       <span>{item.label}</span>
                     </button>
                   );
                 })}
 
-                <div className="pt-3 my-2 border-t border-[#263244]" />
+                <div className="pt-3 my-2 border-t border-slate-200 dark:border-[#263244]" />
 
                 <button
                   type="button"
-                  onClick={() => {
-                    onSelectTab("pricing");
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full h-11 px-3 rounded-[10px] text-sm font-medium flex items-center gap-3 text-[#94A3B8] hover:text-[#F8FAFC]"
+                  onClick={() => handleTabClick("pricing")}
+                  className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8]"
                 >
-                  <Activity className="w-4 h-4 text-[#64748B]" />
+                  <DollarSign className="w-4 h-4 text-slate-400" />
                   <span>Pricing Calculator</span>
                 </button>
 
@@ -429,10 +504,22 @@ export function AppShell({
                     onOpenDownloader();
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full h-11 px-3 rounded-[10px] text-sm font-medium flex items-center gap-3 text-[#94A3B8] hover:text-[#F8FAFC]"
+                  className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8]"
                 >
-                  <FileText className="w-4 h-4 text-[#64748B]" />
+                  <Download className="w-4 h-4 text-slate-400" />
                   <span>Media Downloader</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onOpenHistory();
+                    setMobileMenuOpen(false);
+                  }}
+                  className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8]"
+                >
+                  <History className="w-4 h-4 text-slate-400" />
+                  <span>Saved Reports</span>
                 </button>
 
                 <button
@@ -441,21 +528,20 @@ export function AppShell({
                     onOpenAdmin();
                     setMobileMenuOpen(false);
                   }}
-                  className="w-full h-11 px-3 rounded-[10px] text-sm font-semibold flex items-center gap-3 text-[#14B8A6]"
+                  className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-emerald-600 dark:text-emerald-400"
                 >
-                  <Shield className="w-4 h-4 text-[#14B8A6]" />
+                  <Shield className="w-4 h-4 text-emerald-600" />
                   <span>Admin Panel</span>
                 </button>
               </div>
             </div>
 
-            {/* Mobile Footer */}
-            <div className="pt-3 border-t border-[#263244] flex items-center justify-between text-xs text-[#94A3B8]">
+            <div className="pt-3 border-t border-slate-200 dark:border-[#263244] flex items-center justify-between text-xs text-slate-600 dark:text-[#94A3B8]">
               <span>Muzamil · Owner</span>
               <button
                 type="button"
                 onClick={() => lockApp()}
-                className="text-[#F43F5E] hover:underline"
+                className="text-rose-500 hover:underline font-semibold"
               >
                 Logout
               </button>
