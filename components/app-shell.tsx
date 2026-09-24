@@ -257,11 +257,15 @@ export function AppShell({
               {/* 2nd: Media Downloader */}
               <button
                 type="button"
-                onClick={onOpenDownloader}
+                onClick={() => handleTabClick("downloader")}
                 title={sidebarCollapsed ? "Media Downloader" : undefined}
-                className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.04] transition cursor-pointer text-left"
+                className={`w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 transition cursor-pointer text-left relative ${
+                  currentTab === "downloader"
+                    ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-l-3 border-emerald-600 dark:border-emerald-500 shadow-xs"
+                    : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.04]"
+                }`}
               >
-                <Download className="w-4 h-4 shrink-0 text-slate-400 dark:text-[#64748B]" />
+                <Download className={`w-4 h-4 shrink-0 ${currentTab === "downloader" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400 dark:text-[#64748B]"}`} />
                 {!sidebarCollapsed && <span className="truncate">Media Downloader</span>}
               </button>
 
@@ -269,10 +273,14 @@ export function AppShell({
               {!sidebarCollapsed && (
                 <button
                   type="button"
-                  onClick={onOpenBulkDownloader || onOpenDownloader}
-                  className="w-full h-8 pl-8 pr-3 rounded-lg text-[11px] font-medium flex items-center gap-2 text-slate-500 dark:text-[#94A3B8] hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-white/[0.02] transition cursor-pointer text-left"
+                  onClick={() => handleTabClick("downloader")}
+                  className={`w-full h-8 pl-8 pr-3 rounded-lg text-[11px] font-medium flex items-center gap-2 transition cursor-pointer text-left ${
+                    currentTab === "downloader"
+                      ? "text-emerald-700 dark:text-emerald-400 font-semibold"
+                      : "text-slate-500 dark:text-[#94A3B8] hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-white/[0.02]"
+                  }`}
                 >
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" />
+                  <span className={`w-1.5 h-1.5 rounded-full ${currentTab === "downloader" ? "bg-emerald-600 dark:bg-emerald-400" : "bg-emerald-400 dark:bg-emerald-500"}`} />
                   <span className="truncate">Bulk Listing Downloader</span>
                 </button>
               )}
@@ -515,13 +523,14 @@ export function AppShell({
 
                 <button
                   type="button"
-                  onClick={() => {
-                    onOpenDownloader();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8]"
+                  onClick={() => handleTabClick("downloader")}
+                  className={`w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 transition cursor-pointer text-left ${
+                    currentTab === "downloader"
+                      ? "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-l-3 border-emerald-600"
+                      : "text-slate-600 dark:text-[#94A3B8] hover:bg-slate-50 dark:hover:bg-white/[0.04]"
+                  }`}
                 >
-                  <Download className="w-4 h-4 text-slate-400" />
+                  <Download className={`w-4 h-4 ${currentTab === "downloader" ? "text-emerald-600 dark:text-emerald-400" : "text-slate-400"}`} />
                   <span>Media Downloader</span>
                 </button>
 

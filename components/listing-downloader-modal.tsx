@@ -58,9 +58,10 @@ export interface ListingDownloaderData {
   fetchedAt?: string;
 }
 
-interface ListingDownloaderModalProps {
-  isOpen: boolean;
-  onClose: () => void;
+export interface ListingDownloaderModalProps {
+  isOpen?: boolean;
+  onClose?: () => void;
+  isPage?: boolean;
   initialData?: ListingDownloaderData | null;
   onUpdateListing?: (updated: ListingDownloaderData) => void;
   competitors?: (ListingDownloaderData | null)[];
@@ -109,8 +110,9 @@ async function fetchMediaBlob(url: string): Promise<Blob> {
 }
 
 export function ListingDownloaderModal({
-  isOpen,
+  isOpen = false,
   onClose,
+  isPage = false,
   initialData,
   onUpdateListing,
   competitors,
@@ -122,6 +124,14 @@ export function ListingDownloaderModal({
   const [listing, setListing] = useState<ListingDownloaderData | null>(null);
   const [fetchError, setFetchError] = useState("");
   const [activeTab, setActiveTab] = useState<"images" | "videos" | "tags" | "info">("images");
+
+  // Mode: Single Listing vs Bulk Downloader
+  const [downloaderMode, setDownloaderMode] = useState<"single" | "bulk">("single");
+  const [bulkUrlsText, setBulkUrlsText] = useState("");
+  const [bulkListings, setBulkListings] = useState<ListingDownloaderData[]>([]);
+  const [isBulkFetching, setIsBulkFetching] = useState(false);
+  const [bulkFetchProgress, setBulkFetchProgress] = useState("");
+  const [isBulkZipping, setIsBulkZipping] = useState(false);
 
   // Manual image URL input
   const [customImageUrl, setCustomImageUrl] = useState("");
@@ -688,39 +698,365 @@ export function ListingDownloaderModal({
     URL.revokeObjectURL(blobUrl);
   };
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-[#0B1019] rounded-2xl shadow-2xl border border-slate-200 dark:border-[#263244] text-slate-900 dark:text-[#F8FAFC] flex flex-col overflow-hidden">
-        {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-200 dark:border-[#263244] flex items-center justify-between bg-white dark:bg-[#0F1621]">
-          <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-[#14B8A6]/20 border border-emerald-200 dark:border-[#14B8A6]/30 text-emerald-600 dark:text-[#14B8A6] flex items-center justify-center shadow-xs">
-              <Download className="w-4 h-4" />
-            </div>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-heading text-sm sm:text-base font-bold text-slate-900 dark:text-[#F8FAFC]">
-                  Etsy Listing Downloader &amp; Inspector
-                </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-[#14B8A6]/10 dark:text-[#14B8A6] dark:border-[#14B8A6]/30">
-                  HD Assets
-                </span>
-              </div>
-              <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
-                Download full-resolution images, export 13 tags, and inspect listing metadata.
-              </p>
-            </div>
-          </div>
+  // Bulk Fetch Handler
+  const handleBulkFetch = async () => {
+    const rawLines = bulkUrlsText
+      .split(/[\n,]/)
+      .map((l) => l.trim())
+      .filter((l) => l.length > 0);
 
-          <button
-            type="button"
-            onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.06] transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+    if (rawLines.length === 0) return;
+    setIsBulkFetching(true);
+    const resultsList: ListingDownloaderData[] = [...bulkListings];
+
+    for (let i = 0; i < rawLines.length; i++) {
+      const line = rawLines[i];
+      setBulkFetchProgress(`Fetching listing ${i + 1} of ${rawLines.length}...`);
+      try {
+        const res = await fetch(`/api/fetch-listing?url=${encodeURIComponent(line)}`);
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.listing) {
+            resultsList.push({
+              listingId: data.listing.listingId,
+              title: data.listing.title,
+              description: data.listing.description,
+              price: data.listing.price,
+              currency: data.listing.currency || "USD",
+              shopName: data.listing.shopName,
+              url: data.listing.url || line,
+              images: data.listing.images || [],
+              imageUrl: data.listing.imageUrl,
+              videos: data.listing.videos || (data.listing.videoUrl ? [{ url: data.listing.videoUrl }] : []),
+              videoUrl: data.listing.videoUrl,
+              tags: data.listing.tags || [],
+              materials: data.listing.materials || [],
+            });
+          }
+        }
+      } catch (e) {
+        console.warn(`Failed to fetch bulk listing ${i}:`, e);
+      }
+    }
+
+    setBulkListings(resultsList);
+    setIsBulkFetching(false);
+    setBulkFetchProgress("");
+    setBulkUrlsText("");
+  };
+
+  // Bulk ZIP Download Handler
+  const handleDownloadBulkZip = async () => {
+    if (bulkListings.length === 0) return;
+    setIsBulkZipping(true);
+    setBulkFetchProgress("Starting bulk packaging...");
+
+    try {
+      const zip = new JSZip();
+      let totalPhotos = 0;
+
+      for (let b = 0; b < bulkListings.length; b++) {
+        const item = bulkListings[b];
+        const cleanShop = (item.shopName || "etsy").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 15);
+        const folderName = `item-${b + 1}-${item.listingId || "listing"}-${cleanShop}`;
+        const subFolder = zip.folder(folderName);
+
+        const imgs: string[] = [];
+        if (Array.isArray(item.images)) {
+          for (const raw of item.images) {
+            if (typeof raw === "string") imgs.push(toFullResolutionUrl(raw));
+            else if (raw && typeof raw === "object") imgs.push(toFullResolutionUrl(raw.fullUrl || raw.url));
+          }
+        }
+        if (item.imageUrl && !imgs.includes(toFullResolutionUrl(item.imageUrl))) {
+          imgs.unshift(toFullResolutionUrl(item.imageUrl));
+        }
+
+        for (let p = 0; p < imgs.length; p++) {
+          setBulkFetchProgress(`Item ${b + 1}/${bulkListings.length}: Photo ${p + 1}/${imgs.length}...`);
+          try {
+            const blob = await fetchMediaBlob(imgs[p]);
+            subFolder?.file(`photo-${String(p + 1).padStart(2, "0")}.jpg`, blob);
+            totalPhotos++;
+          } catch {
+            // continue
+          }
+        }
+      }
+
+      setBulkFetchProgress(`Compressing ${totalPhotos} HD photos into ZIP...`);
+      const blob = await zip.generateAsync({ type: "blob" });
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = blobUrl;
+      a.download = `etsy-bulk-listings-${bulkListings.length}-items.zip`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(blobUrl);
+    } catch (err: any) {
+      alert(`Could not create bulk ZIP: ${err.message}`);
+    } finally {
+      setIsBulkZipping(false);
+      setBulkFetchProgress("");
+    }
+  };
+
+  // Bulk CSV Export Handler
+  const handleExportBulkTagsCsv = () => {
+    if (bulkListings.length === 0) return;
+    const headers = ["Listing ID", "Shop Name", "Price", "Currency", "Title", "URL", "Tag 1", "Tag 2", "Tag 3", "Tag 4", "Tag 5", "Tag 6", "Tag 7", "Tag 8", "Tag 9", "Tag 10", "Tag 11", "Tag 12", "Tag 13"];
+    const rows = bulkListings.map((item) => {
+      const tags = (item.tags || []).slice(0, 13);
+      const row = [
+        `"${item.listingId || ""}"`,
+        `"${(item.shopName || "").replace(/"/g, '""')}"`,
+        `"${item.price || ""}"`,
+        `"${item.currency || "USD"}"`,
+        `"${(item.title || "").replace(/"/g, '""')}"`,
+        `"${item.url || ""}"`,
+        ...Array.from({ length: 13 }).map((_, i) => `"${(tags[i] || "").replace(/"/g, '""')}"`),
+      ];
+      return row.join(",");
+    });
+
+    const csvContent = [headers.join(","), ...rows].join("\n");
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = blobUrl;
+    a.download = `etsy-bulk-tags-${bulkListings.length}-listings.csv`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  };
+
+  const mainView = (
+    <div className={`relative w-full ${isPage ? "" : "max-w-4xl max-h-[90vh] shadow-2xl overflow-hidden"} bg-white dark:bg-[#0B1019] rounded-2xl border border-slate-200 dark:border-[#263244] text-slate-900 dark:text-[#F8FAFC] flex flex-col`}>
+      {/* Header */}
+      <div className="px-5 py-4 border-b border-slate-200 dark:border-[#263244] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#0F1621]">
+        <div className="flex items-center gap-3">
+          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-[#14B8A6]/20 border border-emerald-200 dark:border-[#14B8A6]/30 text-emerald-600 dark:text-[#14B8A6] flex items-center justify-center shadow-xs shrink-0">
+            <Download className="w-4 h-4" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h2 className="font-heading text-sm sm:text-base font-bold text-slate-900 dark:text-[#F8FAFC]">
+                Etsy Listing &amp; Media Downloader
+              </h2>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-[#14B8A6]/10 dark:text-[#14B8A6] dark:border-[#14B8A6]/30">
+                HD Assets &amp; ZIP
+              </span>
+            </div>
+            <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
+              Download full-resolution images, export 13 tags, and inspect listing metadata.
+            </p>
+          </div>
         </div>
 
+        <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+          {/* Mode Switcher: Single vs Bulk */}
+          <div className="inline-flex p-0.5 bg-slate-100 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] rounded-lg text-xs font-semibold">
+            <button
+              type="button"
+              onClick={() => setDownloaderMode("single")}
+              className={`px-3 py-1 rounded-md transition cursor-pointer ${
+                downloaderMode === "single"
+                  ? "bg-white dark:bg-[#1F2937] text-slate-900 dark:text-white shadow-2xs font-bold"
+                  : "text-slate-500 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC]"
+              }`}
+            >
+              Single Listing
+            </button>
+            <button
+              type="button"
+              onClick={() => setDownloaderMode("bulk")}
+              className={`px-3 py-1 rounded-md transition cursor-pointer ${
+                downloaderMode === "bulk"
+                  ? "bg-white dark:bg-[#1F2937] text-slate-900 dark:text-white shadow-2xs font-bold"
+                  : "text-slate-500 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC]"
+              }`}
+            >
+              Bulk Downloader {bulkListings.length > 0 && `(${bulkListings.length})`}
+            </button>
+          </div>
+
+          {!isPage && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.06] transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+        {downloaderMode === "bulk" ? (
+          <div className="p-5 space-y-5 bg-white dark:bg-[#0B1019]">
+            {/* Bulk Input Card */}
+            <div className="p-4 bg-slate-50 dark:bg-[#0F1621] rounded-xl border border-slate-200 dark:border-[#263244] space-y-3">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                <div>
+                  <h3 className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC]">
+                    Bulk Listing URLs &amp; Competitors
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
+                    Paste multiple Etsy listing URLs or listing IDs (one per line, up to 15 listings).
+                  </p>
+                </div>
+                {competitors && competitors.some(Boolean) && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      const compUrls = competitors.filter(Boolean).map((c) => c?.url || "").filter(Boolean);
+                      setBulkUrlsText((prev) => {
+                        const existing = prev ? prev.trim() + "\n" : "";
+                        return existing + compUrls.join("\n");
+                      });
+                    }}
+                    className="px-2.5 py-1 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/40 rounded-lg text-xs font-semibold hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition cursor-pointer"
+                  >
+                    + Import from Active Competitor Slots
+                  </button>
+                )}
+              </div>
+
+              <textarea
+                value={bulkUrlsText}
+                onChange={(e) => setBulkUrlsText(e.target.value)}
+                placeholder={"https://www.etsy.com/listing/123456789/vintage-ceramic-mug\nhttps://www.etsy.com/listing/987654321/handmade-leather-wallet"}
+                rows={4}
+                className="w-full p-3 bg-white dark:bg-[#111827] border border-slate-200 dark:border-[#263244] rounded-xl text-xs font-mono text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 dark:placeholder:text-[#64748B] focus:outline-none focus:border-emerald-500 transition"
+              />
+
+              <div className="flex items-center justify-between flex-wrap gap-2">
+                <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
+                  {bulkUrlsText.split(/[\n,]/).filter((l) => l.trim().length > 0).length} links queued
+                </span>
+                <button
+                  type="button"
+                  onClick={handleBulkFetch}
+                  disabled={isBulkFetching || !bulkUrlsText.trim()}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white rounded-xl text-xs font-bold inline-flex items-center gap-2 cursor-pointer shadow-xs transition"
+                >
+                  {isBulkFetching ? (
+                    <>
+                      <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                      <span>{bulkFetchProgress || "Fetching..."}</span>
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Fetch All Listings ({bulkUrlsText.split(/[\n,]/).filter((l) => l.trim().length > 0).length || 0})</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            {/* Bulk Listings Table / Grid */}
+            {bulkListings.length > 0 ? (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between flex-wrap gap-3 p-3 bg-slate-50 dark:bg-[#0F1621] rounded-xl border border-slate-200 dark:border-[#263244]">
+                  <div className="text-xs text-slate-700 dark:text-[#F8FAFC] font-semibold">
+                    <span>Ready to download: </span>
+                    <strong className="text-emerald-700 dark:text-[#14B8A6]">{bulkListings.length} Listings</strong>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <button
+                      type="button"
+                      onClick={handleExportBulkTagsCsv}
+                      className="px-3 py-1.5 bg-white dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] hover:border-slate-300 text-slate-700 dark:text-[#F8FAFC] text-xs font-semibold rounded-lg inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
+                    >
+                      <FileText className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Export All Tags (.CSV)</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleDownloadBulkZip}
+                      disabled={isBulkZipping}
+                      className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold rounded-lg inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    >
+                      {isBulkZipping ? (
+                        <>
+                          <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                          <span>{bulkFetchProgress || "Creating ZIP..."}</span>
+                        </>
+                      ) : (
+                        <>
+                          <FileArchive className="w-3.5 h-3.5" />
+                          <span>Download All Photos (.ZIP)</span>
+                        </>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setBulkListings([])}
+                      className="text-xs text-slate-400 hover:text-rose-600 cursor-pointer ml-1"
+                    >
+                      Clear All
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {bulkListings.map((bItem, bIdx) => {
+                    const firstImg = (Array.isArray(bItem.images) && bItem.images[0])
+                      ? (typeof bItem.images[0] === "string" ? bItem.images[0] : (bItem.images[0] as any).fullUrl || (bItem.images[0] as any).url)
+                      : bItem.imageUrl;
+                    return (
+                      <div
+                        key={bIdx}
+                        className="p-3 bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-xl flex items-center gap-3 shadow-2xs"
+                      >
+                        {firstImg ? (
+                          <img
+                            src={toFullResolutionUrl(firstImg)}
+                            alt=""
+                            className="w-14 h-14 rounded-lg object-cover bg-slate-100 dark:bg-slate-800 shrink-0 border border-slate-200 dark:border-[#263244]"
+                          />
+                        ) : (
+                          <div className="w-14 h-14 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0">
+                            <ImageIcon className="w-5 h-5 text-slate-400" />
+                          </div>
+                        )}
+                        <div className="min-w-0 flex-1 space-y-1">
+                          <p className="text-xs font-semibold text-slate-900 dark:text-[#F8FAFC] truncate">
+                            {bItem.title || "Etsy Listing"}
+                          </p>
+                          <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-[#94A3B8]">
+                            <span>{bItem.shopName || "Etsy Shop"}</span>
+                            {bItem.price && <span>• ${bItem.price}</span>}
+                          </div>
+                          <div className="flex items-center gap-1.5 text-[10px]">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 font-medium">
+                              {(bItem.tags || []).length} tags
+                            </span>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setListing(bItem);
+                                setDownloaderMode("single");
+                              }}
+                              className="text-emerald-600 dark:text-[#14B8A6] font-semibold hover:underline cursor-pointer"
+                            >
+                              Inspect Single ↗
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
+          </div>
+        ) : (
+          /* SINGLE LISTING MODE */
+          <>
         {/* URL Input Bar */}
         <div className="p-4 border-b border-slate-200 dark:border-[#263244] bg-slate-50 dark:bg-[#0F1621]">
           <form
@@ -1047,10 +1383,10 @@ export function ListingDownloaderModal({
                   <button
                     type="button"
                     onClick={() => {
-                      onClose();
+                      onClose?.();
                       onRunAnalysisWithCompetitors();
                     }}
-                    className="h-7 px-3 bg-black hover:bg-zinc-800 text-white rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer border border-black shadow-xs self-start sm:self-auto transition"
+                    className="h-7 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-[11px] font-semibold inline-flex items-center gap-1 shrink-0 cursor-pointer shadow-xs self-start sm:self-auto transition"
                   >
                     <span>Analyze {competitorCount} Competitor{competitorCount > 1 ? "s" : ""} ↗</span>
                   </button>
@@ -1060,7 +1396,7 @@ export function ListingDownloaderModal({
 
             {/* Competitor Feedback Toast */}
             {competitorToast && (
-              <div className="p-3 bg-emerald-50 border border-emerald-200 rounded-xl flex items-center justify-between text-xs text-emerald-900 animate-in fade-in duration-150">
+              <div className="p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40 rounded-xl flex items-center justify-between text-xs text-emerald-900 dark:text-emerald-200 animate-in fade-in duration-150">
                 <div className="flex items-center gap-2">
                   <Check className="w-4 h-4 text-emerald-600 shrink-0" />
                   <span>{competitorToast}</span>
@@ -1069,10 +1405,10 @@ export function ListingDownloaderModal({
                   <button
                     type="button"
                     onClick={() => {
-                      onClose();
+                      onClose?.();
                       onRunAnalysisWithCompetitors();
                     }}
-                    className="px-2.5 py-1 bg-black text-white text-[11px] font-semibold rounded-lg hover:bg-zinc-800 transition cursor-pointer shrink-0"
+                    className="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-700 text-white text-[11px] font-semibold rounded-lg transition cursor-pointer shrink-0"
                   >
                     View in Studio ↗
                   </button>
@@ -1081,24 +1417,24 @@ export function ListingDownloaderModal({
             )}
 
             {/* Top Summary Box */}
-            <div className="p-4 bg-[#0F1621] border border-[#263244] rounded-xl flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center">
+            <div className="p-4 bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-xl flex flex-col sm:flex-row gap-4 justify-between items-start sm:items-center shadow-2xs">
               <div className="space-y-1 max-w-xl">
                 <div className="flex items-center gap-2 flex-wrap">
-                  <span className="text-[11px] font-bold text-[#64748B] uppercase tracking-wider">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-[#64748B] uppercase tracking-wider">
                     {listing.shopName || "Etsy Artisan"}
                   </span>
                   {listing.listingId && (
-                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-[#131C29] text-[#94A3B8] border border-[#263244]">
+                    <span className="px-1.5 py-0.5 rounded text-[10px] font-mono bg-slate-100 dark:bg-[#131C29] text-slate-700 dark:text-[#94A3B8] border border-slate-200 dark:border-[#263244]">
                       ID: {listing.listingId}
                     </span>
                   )}
                   {listing.price && (
-                    <span className="text-xs font-bold text-[#14B8A6] font-mono bg-[#14B8A6]/10 px-2 py-0.5 rounded border border-[#14B8A6]/30">
+                    <span className="text-xs font-bold text-emerald-700 dark:text-[#14B8A6] font-mono bg-emerald-50 dark:bg-[#14B8A6]/10 px-2 py-0.5 rounded border border-emerald-200 dark:border-[#14B8A6]/30">
                       ${listing.price} {listing.currency || "USD"}
                     </span>
                   )}
                 </div>
-                <h3 className="font-heading text-sm font-semibold text-[#F8FAFC] line-clamp-2">
+                <h3 className="font-heading text-sm font-semibold text-slate-900 dark:text-[#F8FAFC] line-clamp-2">
                   {listing.title || "Etsy Listing"}
                 </h3>
               </div>
@@ -1112,10 +1448,10 @@ export function ListingDownloaderModal({
                     onClick={handleToggleCurrentListingCompetitor}
                     className={`h-8 px-3 rounded-lg text-xs font-semibold inline-flex items-center gap-1.5 transition cursor-pointer border ${
                       currentCompetitorSlot !== -1
-                        ? "bg-[#14B8A6]/20 text-[#14B8A6] border-[#14B8A6]/40 hover:bg-[#14B8A6]/30 shadow-xs"
+                        ? "bg-emerald-50 dark:bg-[#14B8A6]/20 text-emerald-700 dark:text-[#14B8A6] border-emerald-300 dark:border-[#14B8A6]/40 hover:bg-emerald-100 dark:hover:bg-[#14B8A6]/30 shadow-xs"
                         : competitorCount >= 3
-                        ? "bg-[#131C29] text-[#64748B] border-[#263244] hover:bg-[#131C29]"
-                        : "bg-[#14B8A6] text-[#021A17] hover:bg-[#2DD4BF] border-transparent font-bold shadow-xs"
+                        ? "bg-slate-100 dark:bg-[#131C29] text-slate-400 dark:text-[#64748B] border-slate-200 dark:border-[#263244]"
+                        : "bg-emerald-600 dark:bg-[#14B8A6] text-white dark:text-[#021A17] hover:bg-emerald-700 dark:hover:bg-[#2DD4BF] border-transparent font-bold shadow-xs"
                     }`}
                     title={
                       currentCompetitorSlot !== -1
@@ -1127,17 +1463,17 @@ export function ListingDownloaderModal({
                   >
                     {currentCompetitorSlot !== -1 ? (
                       <>
-                        <Check className="w-3.5 h-3.5 text-[#14B8A6]" />
+                        <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-[#14B8A6]" />
                         <span>Competitor #{currentCompetitorSlot + 1} Added</span>
                       </>
                     ) : competitorCount >= 3 ? (
                       <>
-                        <Users className="w-3.5 h-3.5 text-[#64748B]" />
+                        <Users className="w-3.5 h-3.5 text-slate-400 dark:text-[#64748B]" />
                         <span>Competitors Full (3/3)</span>
                       </>
                     ) : (
                       <>
-                        <Plus className="w-3.5 h-3.5 text-[#021A17]" />
+                        <Plus className="w-3.5 h-3.5 text-white dark:text-[#021A17]" />
                         <span>Add as Competitor ({competitorCount}/3)</span>
                       </>
                     )}
@@ -1149,25 +1485,25 @@ export function ListingDownloaderModal({
                     href={listing.url}
                     target="_blank"
                     rel="noreferrer"
-                    className="h-8 px-3 rounded-lg bg-[#131C29] border border-[#263244] hover:border-[#36445A] text-[#F8FAFC] text-xs font-medium inline-flex items-center gap-1.5 transition cursor-pointer"
+                    className="h-8 px-3 rounded-lg bg-white dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] hover:border-slate-300 dark:hover:border-[#36445A] text-slate-700 dark:text-[#F8FAFC] text-xs font-medium inline-flex items-center gap-1.5 transition cursor-pointer shadow-2xs"
                   >
                     <span>View on Etsy</span>
-                    <ExternalLink className="w-3 h-3 text-[#64748B]" />
+                    <ExternalLink className="w-3 h-3 text-slate-400 dark:text-[#64748B]" />
                   </a>
                 )}
                 <button
                   type="button"
                   onClick={handleExportTxt}
-                  className="h-8 px-3 rounded-lg bg-[#131C29] border border-[#263244] hover:border-[#36445A] text-[#F8FAFC] text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer"
+                  className="h-8 px-3 rounded-lg bg-white dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] hover:border-slate-300 dark:hover:border-[#36445A] text-slate-700 dark:text-[#F8FAFC] text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer shadow-2xs"
                   title="Export listing text summary"
                 >
-                  <FileText className="w-3 h-3 text-[#64748B]" />
+                  <FileText className="w-3 h-3 text-slate-400 dark:text-[#64748B]" />
                   <span>Export TXT</span>
                 </button>
                 <button
                   type="button"
                   onClick={handleExportJson}
-                  className="h-8 px-3 rounded-lg bg-[#131C29] border border-[#263244] hover:border-[#36445A] text-[#F8FAFC] text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer"
+                  className="h-8 px-3 rounded-lg bg-white dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] hover:border-slate-300 dark:hover:border-[#36445A] text-slate-700 dark:text-[#F8FAFC] text-xs font-medium inline-flex items-center gap-1 transition cursor-pointer shadow-2xs"
                   title="Export raw JSON"
                 >
                   <span>JSON</span>
@@ -1176,15 +1512,15 @@ export function ListingDownloaderModal({
             </div>
 
             {/* Navigation tabs inside downloader */}
-            <div className="flex items-center justify-between border-b border-[#263244] pb-2 flex-wrap gap-2">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-[#263244] pb-2 flex-wrap gap-2">
               <div className="flex items-center gap-1 flex-wrap">
                 <button
                   type="button"
                   onClick={() => setActiveTab("images")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
                     activeTab === "images"
-                      ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
-                      : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#131C29]"
+                      ? "bg-emerald-600 dark:bg-[#14B8A6] text-white dark:text-[#021A17] font-bold shadow-xs"
+                      : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-[#131C29]"
                   }`}
                 >
                   <ImageIcon className="w-3.5 h-3.5" />
@@ -1196,14 +1532,14 @@ export function ListingDownloaderModal({
                   onClick={() => setActiveTab("videos")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
                     activeTab === "videos"
-                      ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
-                      : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#131C29]"
+                      ? "bg-emerald-600 dark:bg-[#14B8A6] text-white dark:text-[#021A17] font-bold shadow-xs"
+                      : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-[#131C29]"
                   }`}
                 >
                   <Video className="w-3.5 h-3.5" />
                   <span>Videos ({normalizedVideos.length})</span>
                   {normalizedVideos.length > 0 && (
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#14B8A6] animate-pulse" />
+                    <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 dark:bg-[#14B8A6] animate-pulse" />
                   )}
                 </button>
 
@@ -1212,8 +1548,8 @@ export function ListingDownloaderModal({
                   onClick={() => setActiveTab("tags")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
                     activeTab === "tags"
-                      ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
-                      : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#131C29]"
+                      ? "bg-emerald-600 dark:bg-[#14B8A6] text-white dark:text-[#021A17] font-bold shadow-xs"
+                      : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-[#131C29]"
                   }`}
                 >
                   <TagIcon className="w-3.5 h-3.5" />
@@ -1225,8 +1561,8 @@ export function ListingDownloaderModal({
                   onClick={() => setActiveTab("info")}
                   className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
                     activeTab === "info"
-                      ? "bg-[#14B8A6] text-[#021A17] font-bold shadow-xs"
-                      : "text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-[#131C29]"
+                      ? "bg-emerald-600 dark:bg-[#14B8A6] text-white dark:text-[#021A17] font-bold shadow-xs"
+                      : "text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-[#131C29]"
                   }`}
                 >
                   <Layers className="w-3.5 h-3.5" />
@@ -1240,16 +1576,16 @@ export function ListingDownloaderModal({
                     type="button"
                     onClick={handleDownloadAllZip}
                     disabled={isZipping}
-                    className="h-8 px-3 rounded-lg bg-[#14B8A6] hover:bg-[#2DD4BF] disabled:opacity-50 text-[#021A17] text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
+                    className="h-8 px-3 rounded-lg bg-emerald-600 hover:bg-emerald-700 dark:bg-[#14B8A6] dark:hover:bg-[#2DD4BF] disabled:opacity-50 text-white dark:text-[#021A17] text-xs font-bold inline-flex items-center gap-1.5 transition cursor-pointer shadow-xs"
                   >
                     {isZipping ? (
                       <>
-                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-[#021A17]" />
+                        <RefreshCw className="w-3.5 h-3.5 animate-spin text-white dark:text-[#021A17]" />
                         <span>{zipProgress || "Zipping..."}</span>
                       </>
                     ) : (
                       <>
-                        <FileArchive className="w-3.5 h-3.5 text-[#021A17]" />
+                        <FileArchive className="w-3.5 h-3.5 text-white dark:text-[#021A17]" />
                         <span>
                           Download All ({normalizedImages.length} Photo{normalizedImages.length === 1 ? "" : "s"}
                           {normalizedVideos.length > 0
@@ -1638,7 +1974,49 @@ export function ListingDownloaderModal({
             </div>
           </div>
         )}
+        </>
+      )}
+    </div>
+  );
+
+  if (isPage) {
+    return (
+      <div className="w-full space-y-6">
+        {mainView}
+        {lightboxImage && (
+          <div
+            className="fixed inset-0 z-60 bg-black/90 flex items-center justify-center p-4 cursor-pointer"
+            onClick={() => setLightboxImage(null)}
+          >
+            <div className="relative max-w-4xl max-h-[90vh]">
+              <img
+                src={lightboxImage}
+                alt="Full preview"
+                className="max-w-full max-h-[85vh] object-contain rounded-lg shadow-2xl"
+              />
+              <div className="mt-3 flex items-center justify-between text-white">
+                <span className="text-xs text-slate-300">Click anywhere to close</span>
+                <a
+                  href={lightboxImage}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <span>Open in new tab</span>
+                  <ExternalLink className="w-3 h-3" />
+                </a>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
+      {mainView}
 
       {/* Lightbox Modal */}
       {lightboxImage && (
@@ -1658,7 +2036,7 @@ export function ListingDownloaderModal({
                 href={lightboxImage}
                 target="_blank"
                 rel="noreferrer"
-                className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs font-semibold inline-flex items-center gap-1"
+                className="px-3 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs font-semibold inline-flex items-center gap-1 cursor-pointer"
                 onClick={(e) => e.stopPropagation()}
               >
                 <span>Open in new tab</span>
@@ -1670,4 +2048,8 @@ export function ListingDownloaderModal({
       )}
     </div>
   );
+}
+
+export function ListingDownloaderView(props: Omit<ListingDownloaderModalProps, "isPage">) {
+  return <ListingDownloaderModal {...props} isPage={true} isOpen={true} />;
 }

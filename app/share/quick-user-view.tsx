@@ -46,6 +46,7 @@ import { AppShell, ViewTab } from "@/components/app-shell";
 import { DashboardHome } from "@/components/dashboard-home";
 import {
   ListingDownloaderModal,
+  ListingDownloaderView,
   ListingDownloaderData,
 } from "@/components/listing-downloader-modal";
 import { DevicesAppsModal } from "@/components/devices-apps-modal";
@@ -247,10 +248,10 @@ export function QuickUserView() {
     setDownloaderInitialData(null);
   };
 
-  // Open Downloader Modal for any listing
+  // Open Downloader for any listing
   const handleOpenDownloader = (data?: ListingDownloaderData | null) => {
     setDownloaderInitialData(data || null);
-    setIsDownloaderOpen(true);
+    setCurrentTab("downloader");
   };
 
   // Handle incoming 1-click Bookmarklet & Extension import via #import=...
@@ -925,15 +926,52 @@ export function QuickUserView() {
                 handleAnalyze(undefined, q);
               }}
             />
-          ) : currentTab === "pricing" && !results ? (
+          ) : currentTab === "downloader" ? (
+            <ListingDownloaderView
+              initialData={downloaderInitialData}
+              competitors={manualListings}
+              onToggleCompetitor={handleToggleCompetitor}
+              onRunAnalysisWithCompetitors={() => {
+                setShowManualUrls(true);
+                const firstComp = manualListings.find(Boolean);
+                const queryToUse =
+                  searchQuery.trim() ||
+                  firstComp?.tags?.[0] ||
+                  firstComp?.title?.split(/[,|\-–—]/)[0]?.trim() ||
+                  "etsy product";
+                if (!searchQuery.trim()) {
+                  setSearchQuery(queryToUse);
+                }
+                setCurrentTab("competitors");
+                handleAnalyze(undefined, queryToUse);
+              }}
+              onUpdateListing={(updated) => {
+                setDownloaderInitialData(updated);
+                const matchedIdx = manualUrls.findIndex(
+                  (u, i) =>
+                    (updated.url && u && u.includes(updated.url)) ||
+                    (updated.listingId && manualListings[i]?.listingId === updated.listingId)
+                );
+                if (matchedIdx !== -1) {
+                  setManualListings((prev) => {
+                    const copy = [...prev];
+                    copy[matchedIdx] = updated;
+                    return copy;
+                  });
+                }
+              }}
+            />
+          ) : currentTab === "pricing" ? (
             <div className="bg-white dark:bg-[#0B1019] border border-slate-200 dark:border-[#263244] rounded-2xl p-6 shadow-xs">
               <PricingCalculator
                 prices={
-                  manualListings.some((l) => l?.price)
+                  (results?.competitorsAnalyzed?.map((c: any) => c.price).filter(Boolean) || []).length > 0
+                    ? results.competitorsAnalyzed.map((c: any) => c.price).filter(Boolean)
+                    : manualListings.some((l) => l?.price)
                     ? (manualListings.map((l) => l?.price).filter(Boolean) as string[])
                     : (manualPrices.filter(Boolean) as string[])
                 }
-                productNoun={searchQuery || undefined}
+                productNoun={results?.productNoun || searchQuery || undefined}
                 initialCogs={productFacts.cogs}
                 initialPrice={productFacts.targetPrice}
               />
@@ -974,8 +1012,6 @@ export function QuickUserView() {
                     ? "Listing Optimization & 13 Tags Studio"
                     : currentTab === "competitors"
                     ? "Competitor Analysis & Benchmark Engine"
-                    : currentTab === "pricing"
-                    ? "Pricing & Fee Intelligence Calculator"
                     : "Etsy SEO Market Intelligence"}
                 </h1>
                 <p className="text-xs sm:text-sm text-slate-500 dark:text-[#94A3B8] max-w-md mx-auto leading-relaxed">
@@ -2302,44 +2338,6 @@ export function QuickUserView() {
             setEditedDescription(saved.description);
             setActiveTab("overview");
             setIsHistoryOpen(false);
-          }}
-        />
-
-        {/* Listing Downloader Modal */}
-        <ListingDownloaderModal
-          isOpen={isDownloaderOpen}
-          onClose={() => setIsDownloaderOpen(false)}
-          initialData={downloaderInitialData}
-          competitors={manualListings}
-          onToggleCompetitor={handleToggleCompetitor}
-          onRunAnalysisWithCompetitors={() => {
-            setShowManualUrls(true);
-            const firstComp = manualListings.find(Boolean);
-            const queryToUse =
-              searchQuery.trim() ||
-              firstComp?.tags?.[0] ||
-              firstComp?.title?.split(/[,|\-–—]/)[0]?.trim() ||
-              "etsy product";
-            if (!searchQuery.trim()) {
-              setSearchQuery(queryToUse);
-            }
-            handleAnalyze(undefined, queryToUse);
-          }}
-          onUpdateListing={(updated) => {
-            setDownloaderInitialData(updated);
-            // Sync with manual competitor slots if matching
-            const matchedIdx = manualUrls.findIndex(
-              (u, i) =>
-                (updated.url && u && u.includes(updated.url)) ||
-                (updated.listingId && manualListings[i]?.listingId === updated.listingId)
-            );
-            if (matchedIdx !== -1) {
-              setManualListings((prev) => {
-                const copy = [...prev];
-                copy[matchedIdx] = updated;
-                return copy;
-              });
-            }
           }}
         />
     </AccessGate>
