@@ -1,6 +1,8 @@
 @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600;700&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 @theme {
   --font-sans: var(--font-manrope, 'Manrope'), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   --font-body: var(--font-manrope, 'Manrope'), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
@@ -8,20 +10,20 @@
   --font-mono: 'JetBrains Mono', 'Fira Code', ui-monospace, monospace;
 
   /* Design System Color Tokens */
-  --color-bg-page: #070B14;
-  --color-bg-secondary: #0B1019;
-  --color-surface-main: #0F1621;
-  --color-surface-elevated: #131C29;
-  --color-surface-interactive: #172231;
-  --color-bg-input: #111827;
-  --color-border-primary: #263244;
-  --color-border-strong: #36445A;
-  --color-text-main: #F8FAFC;
-  --color-text-secondary: #94A3B8;
-  --color-text-muted: #64748B;
-  --color-brand-teal: #14B8A6;
-  --color-brand-teal-hover: #2DD4BF;
-  --color-brand-teal-dark: #0F766E;
+  --color-bg-page: var(--bg-page);
+  --color-bg-secondary: var(--bg-secondary);
+  --color-surface-main: var(--surface-main);
+  --color-surface-elevated: var(--surface-elevated);
+  --color-surface-interactive: var(--surface-interactive);
+  --color-bg-input: var(--bg-input);
+  --color-border-primary: var(--border-primary);
+  --color-border-strong: var(--border-strong);
+  --color-text-main: var(--text-main);
+  --color-text-secondary: var(--text-secondary);
+  --color-text-muted: var(--text-muted);
+  --color-brand-teal: var(--brand-teal);
+  --color-brand-teal-hover: var(--brand-teal-hover);
+  --color-brand-teal-dark: var(--brand-teal-dark);
   --color-status-success: #10B981;
   --color-status-warning: #F59E0B;
   --color-status-danger: #F43F5E;
@@ -178,14 +180,14 @@ svg, [data-lucide], .lucide {
 }
 
 ::-webkit-scrollbar-track {
-  background: #070B14;
+  background: var(--bg-page);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #263244;
+  background: var(--border-strong);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #36445A;
+  background: var(--text-muted);
 }
