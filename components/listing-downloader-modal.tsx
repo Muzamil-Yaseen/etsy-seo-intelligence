@@ -690,23 +690,23 @@ export function ListingDownloaderModal({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-black/80 backdrop-blur-md animate-in fade-in duration-200">
-      <div className="relative w-full max-w-4xl max-h-[90vh] bg-[#0B1019] rounded-2xl shadow-2xl border border-[#263244] text-[#F8FAFC] flex flex-col overflow-hidden">
+      <div className="relative w-full max-w-4xl max-h-[90vh] bg-white dark:bg-[#0B1019] rounded-2xl shadow-2xl border border-slate-200 dark:border-[#263244] text-slate-900 dark:text-[#F8FAFC] flex flex-col overflow-hidden">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-[#263244] flex items-center justify-between bg-[#0F1621]">
+        <div className="px-5 py-4 border-b border-slate-200 dark:border-[#263244] flex items-center justify-between bg-white dark:bg-[#0F1621]">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-lg bg-[#14B8A6]/20 border border-[#14B8A6]/30 text-[#14B8A6] flex items-center justify-center shadow-xs">
+            <div className="w-8 h-8 rounded-lg bg-emerald-50 dark:bg-[#14B8A6]/20 border border-emerald-200 dark:border-[#14B8A6]/30 text-emerald-600 dark:text-[#14B8A6] flex items-center justify-center shadow-xs">
               <Download className="w-4 h-4" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="font-heading text-sm sm:text-base font-bold text-[#F8FAFC]">
+                <h2 className="font-heading text-sm sm:text-base font-bold text-slate-900 dark:text-[#F8FAFC]">
                   Etsy Listing Downloader &amp; Inspector
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#14B8A6]/10 text-[#14B8A6] border border-[#14B8A6]/30">
+                <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-[#14B8A6]/10 dark:text-[#14B8A6] dark:border-[#14B8A6]/30">
                   HD Assets
                 </span>
               </div>
-              <p className="text-xs text-[#94A3B8]">
+              <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
                 Download full-resolution images, export 13 tags, and inspect listing metadata.
               </p>
             </div>
@@ -715,14 +715,14 @@ export function ListingDownloaderModal({
           <button
             type="button"
             onClick={onClose}
-            className="w-8 h-8 rounded-lg flex items-center justify-center text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.06] transition cursor-pointer"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-slate-700 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.06] transition cursor-pointer"
           >
             <X className="w-4 h-4" />
           </button>
         </div>
 
         {/* URL Input Bar */}
-        <div className="p-4 border-b border-[#263244] bg-[#0F1621]">
+        <div className="p-4 border-b border-slate-200 dark:border-[#263244] bg-slate-50 dark:bg-[#0F1621]">
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -731,7 +731,7 @@ export function ListingDownloaderModal({
             className="flex gap-2"
           >
             <div className="relative flex-1">
-              <Search className="w-4 h-4 text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
+              <Search className="w-4 h-4 text-slate-400 dark:text-[#64748B] absolute left-3 top-1/2 -translate-y-1/2" />
               <input
                 type="text"
                 value={urlInput}
@@ -744,14 +744,14 @@ export function ListingDownloaderModal({
                   }
                 }}
                 placeholder="Paste Etsy listing URL or extracted JSON..."
-                className="w-full h-10 pl-9 pr-3 rounded-xl bg-[#111827] border border-[#263244] text-xs text-[#F8FAFC] placeholder:text-[#64748B] focus:outline-none focus:border-[#14B8A6] transition"
+                className="w-full h-10 pl-9 pr-3 rounded-xl bg-white dark:bg-[#111827] border border-slate-200 dark:border-[#263244] text-xs text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 dark:placeholder:text-[#64748B] focus:outline-none focus:border-emerald-500 transition"
               />
             </div>
             <button
               type="button"
               onClick={handlePasteFromClipboard}
               title="Paste listing data or URL from clipboard (Ctrl+V)"
-              className="h-10 px-3.5 rounded-xl bg-[#131C29] hover:bg-[#172231] text-[#F8FAFC] text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0 border border-[#263244]"
+              className="h-10 px-3.5 rounded-xl bg-slate-100 hover:bg-slate-200 dark:bg-[#131C29] dark:hover:bg-[#172231] text-slate-800 dark:text-[#F8FAFC] text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer shrink-0 border border-slate-200 dark:border-[#263244]"
             >
               <ClipboardPaste className="w-4 h-4 text-[#14B8A6]" />
               <span>Paste (Ctrl+V)</span>

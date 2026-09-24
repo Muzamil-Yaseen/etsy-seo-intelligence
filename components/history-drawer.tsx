@@ -190,23 +190,23 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
 
       {/* Slide-over panel */}
       <div className="absolute inset-y-0 right-0 max-w-full flex pl-10">
-        <div className="w-screen max-w-md sm:max-w-lg bg-[#0B1019] border-l border-[#263244] shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
+        <div className="w-screen max-w-md sm:max-w-lg bg-white dark:bg-[#0B1019] border-l border-slate-200 dark:border-[#263244] shadow-2xl flex flex-col animate-in slide-in-from-right duration-300">
           {/* Header */}
-          <div className="p-5 sm:p-6 border-b border-[#263244] bg-[#0F1621] text-[#F8FAFC] flex items-center justify-between">
+          <div className="p-5 sm:p-6 border-b border-slate-200 dark:border-[#263244] bg-white dark:bg-[#0F1621] text-slate-900 dark:text-[#F8FAFC] flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-lg bg-[#14B8A6]/10 border border-[#14B8A6]/20 flex items-center justify-center text-[#14B8A6]">
+              <div className="w-9 h-9 rounded-lg bg-emerald-50 dark:bg-[#14B8A6]/10 border border-emerald-200 dark:border-[#14B8A6]/20 flex items-center justify-center text-emerald-600 dark:text-[#14B8A6]">
                 <History className="w-5 h-5" />
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base sm:text-lg font-bold font-heading text-[#F8FAFC]">
+                  <h3 className="text-base sm:text-lg font-bold font-heading text-slate-900 dark:text-[#F8FAFC]">
                     Saved History
                   </h3>
-                  <span className="px-2 py-0.5 rounded-full bg-[#14B8A6]/20 text-[#14B8A6] border border-[#14B8A6]/30 text-xs font-bold font-mono">
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-[#14B8A6]/20 dark:text-[#14B8A6] dark:border-[#14B8A6]/30 text-xs font-bold font-mono">
                     {history.length}
                   </span>
                 </div>
-                <p className="text-xs text-[#94A3B8]">
+                <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
                   Auto-persisted in local browser storage
                 </p>
               </div>
@@ -215,7 +215,7 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
             <button
               type="button"
               onClick={onClose}
-              className="p-2 rounded-lg text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.06] transition"
+              className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.06] transition cursor-pointer"
               title="Close drawer (Esc)"
             >
               <X className="w-5 h-5" />
@@ -223,16 +223,16 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
           </div>
 
           {/* List Content */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 divide-y divide-[#172231]">
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3.5 divide-y divide-slate-100 dark:divide-[#172231]">
             {history.length === 0 ? (
               <div className="py-20 text-center space-y-3">
-                <div className="w-12 h-12 rounded-2xl bg-[#0F1621] border border-[#263244] flex items-center justify-center text-[#64748B] mx-auto">
+                <div className="w-12 h-12 rounded-2xl bg-slate-50 dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] flex items-center justify-center text-slate-400 dark:text-[#64748B] mx-auto">
                   <History className="w-6 h-6" />
                 </div>
-                <h4 className="text-base font-bold text-[#F8FAFC]">
+                <h4 className="text-base font-bold text-slate-900 dark:text-[#F8FAFC]">
                   No Saved Listings Yet
                 </h4>
-                <p className="text-xs sm:text-sm text-[#94A3B8] max-w-xs mx-auto">
+                <p className="text-xs sm:text-sm text-slate-500 dark:text-[#94A3B8] max-w-xs mx-auto">
                   Whenever you analyze competitor listings or edit details, they will automatically be safely saved here.
                 </p>
               </div>
@@ -243,21 +243,21 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
                   onClick={() => onRestore(item)}
                   className="pt-3.5 first:pt-0 group cursor-pointer"
                 >
-                  <div className="p-4 rounded-xl border border-[#263244] hover:border-[#14B8A6] hover:shadow-md bg-[#0F1621] hover:bg-[#131C29] transition space-y-3">
+                  <div className="p-4 rounded-xl border border-slate-200 dark:border-[#263244] hover:border-emerald-500 dark:hover:border-[#14B8A6] hover:shadow-md bg-white dark:bg-[#0F1621] hover:bg-slate-50 dark:hover:bg-[#131C29] transition space-y-3 shadow-xs">
                     {/* Top line: Noun & Timestamp */}
                     <div className="flex items-start justify-between gap-2">
                       <div>
                         <div className="flex items-center gap-2">
-                          <span className="font-bold text-[#F8FAFC] text-sm sm:text-base capitalize font-heading">
+                          <span className="font-bold text-slate-900 dark:text-[#F8FAFC] text-sm sm:text-base capitalize font-heading">
                             {item.productNoun || "Product Listing"}
                           </span>
                           {item.grade && (
-                            <span className="px-1.5 py-0.5 rounded bg-[#14B8A6]/10 text-[#14B8A6] border border-[#14B8A6]/20 text-xs font-bold font-mono">
+                            <span className="px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200 dark:bg-[#14B8A6]/10 dark:text-[#14B8A6] dark:border-[#14B8A6]/20 text-xs font-bold font-mono">
                               {item.grade} {item.score ? `(${item.score}%)` : ""}
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-1.5 text-[11px] text-[#64748B] mt-0.5">
+                        <div className="flex items-center gap-1.5 text-[11px] text-slate-400 dark:text-[#64748B] mt-0.5">
                           <Calendar className="w-3 h-3" />
                           <span>{item.dateFormatted}</span>
                         </div>
@@ -268,11 +268,11 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
                         <button
                           type="button"
                           onClick={(e) => handleCopyListing(item, e)}
-                          className="p-1.5 rounded-md text-[#94A3B8] hover:text-[#F8FAFC] hover:bg-white/[0.06] transition"
+                          className="p-1.5 rounded-md text-slate-400 hover:text-slate-700 dark:text-[#94A3B8] dark:hover:text-[#F8FAFC] hover:bg-slate-100 dark:hover:bg-white/[0.06] transition"
                           title="Copy listing text"
                         >
                           {copiedId === item.id ? (
-                            <Check className="w-4 h-4 text-[#14B8A6]" />
+                            <Check className="w-4 h-4 text-emerald-600 dark:text-[#14B8A6]" />
                           ) : (
                             <Copy className="w-4 h-4" />
                           )}
@@ -280,7 +280,7 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
                         <button
                           type="button"
                           onClick={(e) => handleDelete(item.id, e)}
-                          className="p-1.5 rounded-md text-[#64748B] hover:text-red-400 hover:bg-red-500/10 transition"
+                          className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 dark:text-[#64748B] dark:hover:text-red-400 hover:bg-rose-50 dark:hover:bg-red-500/10 transition"
                           title="Delete from history"
                         >
                           <Trash2 className="w-4 h-4" />
@@ -290,23 +290,23 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
 
                     {/* Broad Phrase */}
                     {item.mainBroadPhrase && (
-                      <div className="text-xs bg-[#111827] border border-[#263244] p-2 rounded-lg text-[#F8FAFC]">
-                        <span className="text-[#64748B] font-medium">Broad: </span>
+                      <div className="text-xs bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] p-2 rounded-lg text-slate-900 dark:text-[#F8FAFC]">
+                        <span className="text-slate-400 dark:text-[#64748B] font-medium">Broad: </span>
                         <strong className="capitalize">&ldquo;{item.mainBroadPhrase}&rdquo;</strong>
                       </div>
                     )}
 
                     {/* Title preview */}
-                    <div className="text-xs text-[#94A3B8] line-clamp-2 leading-relaxed font-medium">
+                    <div className="text-xs text-slate-600 dark:text-[#94A3B8] line-clamp-2 leading-relaxed font-medium">
                       {item.title}
                     </div>
 
                     {/* Footer stats: tags count and restore cue */}
-                    <div className="flex items-center justify-between pt-2 border-t border-[#172231] text-xs">
-                      <span className="text-[#64748B] font-mono">
+                    <div className="flex items-center justify-between pt-2 border-t border-slate-100 dark:border-[#172231] text-xs">
+                      <span className="text-slate-400 dark:text-[#64748B] font-mono">
                         {item.tags?.length || 0} tags • {item.category?.split(" > ").pop() || "Etsy"}
                       </span>
-                      <div className="flex items-center gap-1 text-[#14B8A6] font-bold group-hover:translate-x-0.5 transition-transform">
+                      <div className="flex items-center gap-1 text-emerald-600 dark:text-[#14B8A6] font-bold group-hover:translate-x-0.5 transition-transform">
                         <RotateCcw className="w-3.5 h-3.5" />
                         <span>Restore</span>
                         <ChevronRight className="w-3.5 h-3.5" />
@@ -320,24 +320,24 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
 
           {/* Footer Actions */}
           {history.length > 0 && (
-            <div className="p-4 sm:p-5 border-t border-[#263244] bg-[#0F1621] flex items-center justify-between gap-3">
+            <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-[#263244] bg-slate-50/70 dark:bg-[#0F1621] flex items-center justify-between gap-3">
               {confirmClear ? (
                 <div className="flex items-center gap-2 w-full justify-between">
-                  <span className="text-xs text-red-400 font-semibold">
+                  <span className="text-xs text-rose-600 dark:text-red-400 font-semibold">
                     Delete all {history.length} saved listings?
                   </span>
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
                       onClick={() => setConfirmClear(false)}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-[#131C29] border border-[#263244] text-[#F8FAFC]"
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-semibold bg-white dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] text-slate-700 dark:text-[#F8FAFC]"
                     >
                       Cancel
                     </button>
                     <button
                       type="button"
                       onClick={handleClear}
-                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-red-600 hover:bg-red-500 text-white"
+                      className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-rose-600 hover:bg-rose-500 text-white"
                     >
                       Yes, Clear All
                     </button>
@@ -345,13 +345,13 @@ export function HistoryDrawer({ isOpen, onClose, onRestore }: HistoryDrawerProps
                 </div>
               ) : (
                 <>
-                  <span className="text-xs text-[#64748B]">
+                  <span className="text-xs text-slate-400 dark:text-[#64748B]">
                     Max {MAX_HISTORY_ITEMS} listings saved locally
                   </span>
                   <button
                     type="button"
                     onClick={() => setConfirmClear(true)}
-                    className="inline-flex items-center gap-1.5 text-xs text-[#94A3B8] hover:text-red-400 font-semibold transition"
+                    className="inline-flex items-center gap-1.5 text-xs text-slate-500 dark:text-[#94A3B8] hover:text-rose-600 dark:hover:text-red-400 font-semibold transition cursor-pointer"
                   >
                     <Trash2 className="w-3.5 h-3.5" />
                     <span>Clear History</span>
