@@ -119,7 +119,6 @@ export function AppShell({
   const getPageTitle = () => {
     switch (currentTab) {
       case "dashboard":
-        return { title: "Dashboard", breadcrumb: "Overview" };
       case "competitors":
         return { title: "Competitor Research", breadcrumb: "Benchmark Studio" };
       case "category":
@@ -157,47 +156,66 @@ export function AppShell({
       >
         <div>
           {/* Top Logo & App Title */}
-          <div className="h-16 px-4 border-b border-slate-200 dark:border-[#263244] flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => onSelectTab("competitors")}
-              className="flex items-center gap-2.5 text-left cursor-pointer focus:outline-none min-w-0"
-              title={branding.appName || "Etsy Intelligence"}
-            >
-              <div className="relative w-8 h-8 rounded-xl bg-emerald-50 dark:bg-[#131C29] border border-emerald-200 dark:border-[#263244] p-1 shrink-0 flex items-center justify-center">
+          <div className={`h-16 border-b border-slate-200 dark:border-[#263244] flex items-center ${sidebarCollapsed ? "px-2 justify-center" : "px-4 justify-between"}`}>
+            {sidebarCollapsed ? (
+              <button
+                type="button"
+                onClick={() => onSelectTab("competitors")}
+                className="relative w-9 h-9 rounded-xl bg-emerald-50 dark:bg-[#131C29] border border-emerald-200 dark:border-[#263244] p-1 flex items-center justify-center cursor-pointer hover:border-emerald-400 transition"
+                title={branding.appName || "Etsy Intelligence"}
+              >
                 <Image
                   src={branding.logoUrl || "/logo-icon.png"}
                   alt="Logo"
                   fill
-                  sizes="32px"
+                  sizes="36px"
                   className="object-contain"
                   priority
                   unoptimized
                 />
-              </div>
-              {!sidebarCollapsed && (
-                <div className="flex flex-col min-w-0">
-                  <div className="flex items-center gap-1">
-                    <span className="text-sm font-bold text-slate-900 dark:text-[#F8FAFC] tracking-tight truncate leading-none">
-                      {branding.appName || "Etsy Intelligence"}
-                    </span>
-                    <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+              </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  onClick={() => onSelectTab("competitors")}
+                  className="flex items-center gap-2.5 text-left cursor-pointer focus:outline-none min-w-0"
+                  title={branding.appName || "Etsy Intelligence"}
+                >
+                  <div className="relative w-8 h-8 rounded-xl bg-emerald-50 dark:bg-[#131C29] border border-emerald-200 dark:border-[#263244] p-1 shrink-0 flex items-center justify-center">
+                    <Image
+                      src={branding.logoUrl || "/logo-icon.png"}
+                      alt="Logo"
+                      fill
+                      sizes="32px"
+                      className="object-contain"
+                      priority
+                      unoptimized
+                    />
                   </div>
-                  <span className="text-[10px] text-emerald-600 dark:text-[#10B981] font-semibold tracking-wider uppercase mt-1 leading-none">
-                    SEO Platform
-                  </span>
-                </div>
-              )}
-            </button>
+                  <div className="flex flex-col min-w-0">
+                    <div className="flex items-center gap-1">
+                      <span className="text-sm font-bold text-slate-900 dark:text-[#F8FAFC] tracking-tight truncate leading-none">
+                        {branding.appName || "Etsy Intelligence"}
+                      </span>
+                      <ChevronDown className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+                    </div>
+                    <span className="text-[10px] text-emerald-600 dark:text-[#10B981] font-semibold tracking-wider uppercase mt-1 leading-none">
+                      SEO Platform
+                    </span>
+                  </div>
+                </button>
 
-            <button
-              type="button"
-              onClick={() => setSidebarCollapsed(!sidebarCollapsed)}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition"
-              title={sidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-            >
-              {sidebarCollapsed ? <PanelLeft className="w-4 h-4" /> : <PanelLeftClose className="w-4 h-4" />}
-            </button>
+                <button
+                  type="button"
+                  onClick={() => setSidebarCollapsed(true)}
+                  className="p-1 rounded-lg text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 transition cursor-pointer"
+                  title="Collapse sidebar"
+                >
+                  <PanelLeftClose className="w-4 h-4" />
+                </button>
+              </>
+            )}
           </div>
 
           {/* Navigation Links Area */}
@@ -211,7 +229,7 @@ export function AppShell({
               )}
               {primaryNavItems.map((item) => {
                 const Icon = item.icon;
-                const isActive = currentTab === item.id;
+                const isActive = currentTab === item.id || (item.id === "competitors" && currentTab === "dashboard");
                 return (
                   <button
                     key={item.id}
@@ -338,37 +356,69 @@ export function AppShell({
         </div>
 
         {/* Bottom User Area */}
-        <div className="p-3 border-t border-slate-200 dark:border-[#263244] bg-slate-50 dark:bg-[#0F1621] flex items-center justify-between">
-          <div className="flex items-center gap-2.5 min-w-0">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-xs ${
-              isAdmin ? "bg-emerald-600 text-white" : "bg-slate-700 text-white"
-            }`}>
-              {isAdmin ? "M" : "E"}
-            </div>
-            {!sidebarCollapsed && (
-              <div className="flex flex-col min-w-0">
-                <span className="text-xs font-bold text-slate-900 dark:text-[#F8FAFC] leading-none truncate">
-                  {isAdmin ? "Muzamil" : "Etsy Seller"}
-                </span>
-                <span className={`text-[10px] font-semibold leading-none mt-1 ${
-                  isAdmin ? "text-emerald-600 dark:text-[#10B981]" : "text-slate-500 dark:text-slate-400"
-                }`}>
-                  {isAdmin ? "👑 Owner · Full Control" : "✓ Active Access"}
-                </span>
+        <div className="p-3 border-t border-slate-200 dark:border-[#263244] bg-slate-50 dark:bg-[#0F1621]">
+          {sidebarCollapsed ? (
+            <div className="flex flex-col items-center gap-2.5">
+              <button
+                type="button"
+                onClick={() => setSidebarCollapsed(false)}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-white hover:bg-slate-200 dark:hover:bg-[#131C29] transition cursor-pointer"
+                title="Expand sidebar"
+              >
+                <PanelLeft className="w-4 h-4" />
+              </button>
+              <div
+                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-xs ${
+                  isAdmin ? "bg-emerald-600 text-white" : "bg-slate-700 text-white"
+                }`}
+                title={isAdmin ? "Muzamil (Owner)" : "Etsy Seller"}
+              >
+                {isAdmin ? "M" : "E"}
               </div>
-            )}
-          </div>
+              <button
+                type="button"
+                onClick={() => lockApp()}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-[#131C29] transition cursor-pointer shrink-0"
+                title="Lock application session"
+                aria-label="Lock application session"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
+          ) : (
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2.5 min-w-0">
+                <div
+                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-xs ${
+                    isAdmin ? "bg-emerald-600 text-white" : "bg-slate-700 text-white"
+                  }`}
+                >
+                  {isAdmin ? "M" : "E"}
+                </div>
+                <div className="flex flex-col min-w-0">
+                  <span className="text-xs font-bold text-slate-900 dark:text-[#F8FAFC] leading-none truncate">
+                    {isAdmin ? "Muzamil" : "Etsy Seller"}
+                  </span>
+                  <span
+                    className={`text-[10px] font-semibold leading-none mt-1 ${
+                      isAdmin ? "text-emerald-600 dark:text-[#10B981]" : "text-slate-500 dark:text-slate-400"
+                    }`}
+                  >
+                    {isAdmin ? "👑 Owner · Full Control" : "✓ Active Access"}
+                  </span>
+                </div>
+              </div>
 
-          {!sidebarCollapsed && (
-            <button
-              type="button"
-              onClick={() => lockApp()}
-              className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-[#131C29] transition cursor-pointer shrink-0"
-              title="Lock application session"
-              aria-label="Lock application session"
-            >
-              <LogOut className="w-4 h-4" />
-            </button>
+              <button
+                type="button"
+                onClick={() => lockApp()}
+                className="w-8 h-8 rounded-lg flex items-center justify-center text-slate-400 hover:text-rose-500 hover:bg-slate-200 dark:hover:bg-[#131C29] transition cursor-pointer shrink-0"
+                title="Lock application session"
+                aria-label="Lock application session"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            </div>
           )}
         </div>
       </aside>
@@ -492,7 +542,7 @@ export function AppShell({
               <div className="space-y-1">
                 {primaryNavItems.map((item) => {
                   const Icon = item.icon;
-                  const isActive = currentTab === item.id;
+                  const isActive = currentTab === item.id || (item.id === "competitors" && currentTab === "dashboard");
                   return (
                     <button
                       key={item.id}

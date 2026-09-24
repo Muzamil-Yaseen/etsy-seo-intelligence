@@ -43,7 +43,6 @@ import { PricingCalculator } from "@/components/pricing-calculator";
 import { ProductFactsDrawer } from "@/components/product-facts-drawer";
 import { DataDetailsDrawer } from "@/components/data-details-drawer";
 import { AppShell, ViewTab } from "@/components/app-shell";
-import { DashboardHome } from "@/components/dashboard-home";
 import {
   ListingDownloaderModal,
   ListingDownloaderView,
@@ -89,8 +88,8 @@ export function QuickUserView() {
   const [appMode, setAppMode] = useState<ApplicationMode>("research");
 
   // Navigation & View State
-  const [currentTab, setCurrentTab] = useState<ViewTab>("dashboard");
-  const [activeTab, setActiveTab] = useState<MainTab>("overview");
+  const [currentTab, setCurrentTab] = useState<ViewTab>("competitors");
+  const [activeTab, setActiveTab] = useState<MainTab>("competitors");
   const [listingSubTab, setListingSubTab] = useState<ListingSubTab>("titles");
 
   // Search Input State
@@ -246,6 +245,8 @@ export function QuickUserView() {
     setIsDataDetailsOpen(false);
     setIsDownloaderOpen(false);
     setDownloaderInitialData(null);
+    setCurrentTab("competitors");
+    setActiveTab("competitors");
   };
 
   // Open Downloader for any listing
@@ -549,8 +550,8 @@ export function QuickUserView() {
 
   const handleNewAnalysis = () => {
     handleResetSession();
-    setCurrentTab("dashboard");
-    setActiveTab("overview");
+    setCurrentTab("competitors");
+    setActiveTab("competitors");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -663,7 +664,13 @@ export function QuickUserView() {
       setEditedTitle(data.title?.text || "");
       setEditedTags(data.tags?.list || []);
       setEditedDescription(data.description?.fullDescription || "");
-      setActiveTab("overview");
+      if (currentTab === "keywords") {
+        setActiveTab("keywords");
+      } else if (currentTab === "listing") {
+        setActiveTab("listing");
+      } else {
+        setActiveTab("competitors");
+      }
       setPhotoChecks({});
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to analyze market. Please try again.");
@@ -842,75 +849,7 @@ export function QuickUserView() {
         isAdmin={isAdmin}
       >
         <div className="w-full max-w-6xl mx-auto space-y-6">
-          {/* DASHBOARD HOME VIEW */}
-          {currentTab === "dashboard" ? (
-            <DashboardHome
-              searchQuery={searchQuery}
-              setSearchQuery={setSearchQuery}
-              onAnalyze={(e, q, l, u, p) => {
-                handleAnalyze(e, q, l, u, p);
-                if (appMode === "optimize") {
-                  setCurrentTab("listing");
-                  setActiveTab("listing");
-                } else {
-                  setCurrentTab("keywords");
-                  setActiveTab("keywords");
-                }
-              }}
-              isLoading={isLoading}
-              appMode={appMode}
-              setAppMode={setAppMode}
-              showManualUrls={showManualUrls}
-              setShowManualUrls={setShowManualUrls}
-              manualUrls={manualUrls}
-              setManualUrls={setManualUrls}
-              manualPrices={manualPrices}
-              setManualPrices={setManualPrices}
-              manualListings={manualListings}
-              fetchingUrlIndex={fetchingUrlIndex}
-              handleFetchUrlCompetitor={(idx) => handleAutoFetchCompetitorUrl(idx, manualUrls[idx])}
-              handleClearUrlSlot={(idx) => {
-                setManualUrls((prev) => {
-                  const copy = [...prev];
-                  copy[idx] = "";
-                  return copy;
-                });
-                setManualPrices((prev) => {
-                  const copy = [...prev];
-                  copy[idx] = "";
-                  return copy;
-                });
-                setManualListings((prev) => {
-                  const copy = [...prev];
-                  copy[idx] = null;
-                  return copy;
-                });
-              }}
-              handleOpenDownloader={handleOpenDownloader}
-              results={results}
-              savedListings={savedListings}
-              onRestoreSaved={(saved) => {
-                handleResetSession();
-                setSearchQuery(saved.mainBroadPhrase);
-                setEditedTitle(saved.title);
-                setEditedTags(saved.tags);
-                setEditedDescription(saved.description);
-                if (saved.rawResult) {
-                  setResults(saved.rawResult);
-                }
-                setCurrentTab("listing");
-                setActiveTab("listing");
-              }}
-              onSelectTab={(tab) => {
-                setCurrentTab(tab);
-                if (tab === "competitors") setActiveTab("competitors");
-                else if (tab === "keywords") setActiveTab("keywords");
-                else if (tab === "listing") setActiveTab("listing");
-                else if (tab === "pricing") setActiveTab("pricing");
-              }}
-              onOpenHistory={() => setIsHistoryOpen(true)}
-            />
-          ) : currentTab === "category" ? (
+          {currentTab === "category" ? (
             <CategoryFinderView
               onSearchNiche={(q) => {
                 setSearchQuery(q);
@@ -1057,6 +996,124 @@ export function QuickUserView() {
                     </div>
                   )}
 
+                  {/* Expandable Competitor URL Slots */}
+                  <div className="pt-2 border-t border-slate-100 dark:border-[#263244]">
+                    <div className="flex items-center justify-between">
+                      <button
+                        type="button"
+                        onClick={() => setShowManualUrls(!showManualUrls)}
+                        className="text-xs font-semibold text-emerald-600 dark:text-[#14B8A6] hover:text-emerald-700 inline-flex items-center gap-1.5 cursor-pointer transition"
+                      >
+                        <Store className="w-3.5 h-3.5" />
+                        <span>
+                          {showManualUrls
+                            ? "Hide Competitor Slots"
+                            : `+ Add Competitor URLs for Benchmarking (${manualUrls.filter((u) => u.trim()).length}/3 set)`}
+                        </span>
+                      </button>
+
+                      <span className="text-[11px] text-slate-400 dark:text-[#64748B]">
+                        Auto-scrapes listing price, tags, and photos
+                      </span>
+                    </div>
+
+                    {showManualUrls && (
+                      <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                        {[0, 1, 2].map((idx) => {
+                          const hasUrl = Boolean(manualUrls[idx]?.trim());
+                          const isFetching = fetchingUrlIndex === idx;
+                          const fetchedListing = manualListings[idx];
+
+                          return (
+                            <div
+                              key={idx}
+                              className="p-3 bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] rounded-xl space-y-2 text-xs"
+                            >
+                              <div className="flex items-center justify-between">
+                                <span className="font-bold text-slate-700 dark:text-[#94A3B8]">
+                                  Competitor #{idx + 1}
+                                </span>
+                                {hasUrl && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setManualUrls((prev) => {
+                                        const copy = [...prev];
+                                        copy[idx] = "";
+                                        return copy;
+                                      });
+                                      setManualPrices((prev) => {
+                                        const copy = [...prev];
+                                        copy[idx] = "";
+                                        return copy;
+                                      });
+                                      setManualListings((prev) => {
+                                        const copy = [...prev];
+                                        copy[idx] = null;
+                                        return copy;
+                                      });
+                                    }}
+                                    className="text-slate-400 hover:text-rose-500 text-[11px] cursor-pointer"
+                                  >
+                                    Clear
+                                  </button>
+                                )}
+                              </div>
+
+                              <input
+                                type="url"
+                                value={manualUrls[idx]}
+                                onChange={(e) => {
+                                  const val = e.target.value;
+                                  setManualUrls((prev) => {
+                                    const copy = [...prev];
+                                    copy[idx] = val;
+                                    return copy;
+                                  });
+                                }}
+                                onBlur={() => handleAutoFetchCompetitorUrl(idx, manualUrls[idx])}
+                                placeholder="https://etsy.com/listing/..."
+                                className="w-full h-8 bg-white dark:bg-[#111827] border border-slate-200 dark:border-[#263244] rounded-lg px-2.5 text-xs text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 outline-none focus:border-emerald-500"
+                              />
+
+                              {isFetching && (
+                                <div className="text-[11px] text-emerald-600 dark:text-[#14B8A6] flex items-center gap-1">
+                                  <RefreshCw className="w-3 h-3 animate-spin" />
+                                  <span>Scraping listing metadata...</span>
+                                </div>
+                              )}
+
+                              {fetchedListing && (
+                                <div className="flex items-center gap-2 pt-1 border-t border-slate-200 dark:border-[#263244]/60">
+                                  {fetchedListing.imageUrl && (
+                                    <div className="relative w-8 h-8 rounded bg-slate-200 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] overflow-hidden shrink-0">
+                                      <Image
+                                        src={fetchedListing.imageUrl}
+                                        alt="Thumb"
+                                        fill
+                                        sizes="32px"
+                                        className="object-cover"
+                                        unoptimized
+                                      />
+                                    </div>
+                                  )}
+                                  <div className="overflow-hidden flex-1">
+                                    <div className="font-semibold text-slate-900 dark:text-[#F8FAFC] text-[11px] truncate">
+                                      {fetchedListing.title || "Listing Fetched"}
+                                    </div>
+                                    <div className="text-[10px] text-emerald-600 dark:text-[#14B8A6]">
+                                      {fetchedListing.price || "Price parsed"} • {fetchedListing.tags?.length || 0} tags
+                                    </div>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
                   {errorMsg && (
                     <div className="p-3 bg-red-500/10 border border-red-500/30 rounded-lg text-xs text-red-500 dark:text-red-400">
                       {errorMsg}
@@ -1186,9 +1243,9 @@ export function QuickUserView() {
                   className="flex items-center gap-4 sm:gap-6 overflow-x-auto whitespace-nowrap px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
                 >
                   {[
+                    { id: "competitors", label: "Competitors" },
                     { id: "overview", label: "Overview" },
                     { id: "keywords", label: "Keywords" },
-                    { id: "competitors", label: "Competitors" },
                     { id: "listing", label: "Listing" },
                     { id: "pricing", label: "Pricing" },
                     { id: "photos", label: "Photos & Media" },
