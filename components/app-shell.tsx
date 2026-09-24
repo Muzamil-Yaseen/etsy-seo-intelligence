@@ -54,6 +54,7 @@ interface AppShellProps {
   onOpenFacts: () => void;
   onOpenHistory: () => void;
   savedCount?: number;
+  isAdmin?: boolean;
   children: React.ReactNode;
 }
 
@@ -67,6 +68,7 @@ export function AppShell({
   onOpenFacts,
   onOpenHistory,
   savedCount = 0,
+  isAdmin = false,
   children,
 }: AppShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -303,34 +305,47 @@ export function AppShell({
               </button>
             </div>
 
-            {/* ADMIN & SETTINGS */}
-            <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-[#1E293B]">
-              <button
-                type="button"
-                onClick={onOpenAdmin}
-                title={sidebarCollapsed ? "Admin Settings" : undefined}
-                className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-slate-600 dark:text-[#94A3B8] hover:text-emerald-600 dark:hover:text-[#2DD4BF] hover:bg-slate-100 dark:hover:bg-[#14B8A6]/10 transition cursor-pointer text-left"
-              >
-                <Shield className="w-4 h-4 shrink-0 text-emerald-600 dark:text-[#14B8A6]" />
-                {!sidebarCollapsed && <span>Admin Panel</span>}
-              </button>
-            </div>
+            {/* ADMIN & SETTINGS - Only visible when Admin is authenticated */}
+            {isAdmin && (
+              <div className="space-y-1 pt-2 border-t border-slate-100 dark:border-[#1E293B]">
+                <button
+                  type="button"
+                  onClick={onOpenAdmin}
+                  title={sidebarCollapsed ? "Admin Master Control" : undefined}
+                  className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/50 hover:bg-emerald-100 dark:hover:bg-emerald-900/60 transition cursor-pointer text-left shadow-xs"
+                >
+                  <Shield className="w-4 h-4 shrink-0 text-emerald-600 dark:text-emerald-400" />
+                  {!sidebarCollapsed && (
+                    <div className="flex items-center justify-between w-full min-w-0">
+                      <span className="font-bold truncate">Admin Control</span>
+                      <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-600 text-white font-bold uppercase tracking-wider">
+                        Full
+                      </span>
+                    </div>
+                  )}
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
         {/* Bottom User Area */}
         <div className="p-3 border-t border-slate-200 dark:border-[#263244] bg-slate-50 dark:bg-[#0F1621] flex items-center justify-between">
           <div className="flex items-center gap-2.5 min-w-0">
-            <div className="w-8 h-8 rounded-full bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-xs">
-              M
+            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-xs ${
+              isAdmin ? "bg-emerald-600 text-white" : "bg-slate-700 text-white"
+            }`}>
+              {isAdmin ? "M" : "E"}
             </div>
             {!sidebarCollapsed && (
               <div className="flex flex-col min-w-0">
                 <span className="text-xs font-bold text-slate-900 dark:text-[#F8FAFC] leading-none truncate">
-                  Muzamil
+                  {isAdmin ? "Muzamil" : "Etsy Seller"}
                 </span>
-                <span className="text-[10px] text-emerald-600 dark:text-[#10B981] font-semibold leading-none mt-1">
-                  Owner
+                <span className={`text-[10px] font-semibold leading-none mt-1 ${
+                  isAdmin ? "text-emerald-600 dark:text-[#10B981]" : "text-slate-500 dark:text-slate-400"
+                }`}>
+                  {isAdmin ? "👑 Owner · Full Control" : "✓ Active Access"}
                 </span>
               </div>
             )}
@@ -522,22 +537,24 @@ export function AppShell({
                   <span>Saved Reports</span>
                 </button>
 
-                <button
-                  type="button"
-                  onClick={() => {
-                    onOpenAdmin();
-                    setMobileMenuOpen(false);
-                  }}
-                  className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-emerald-600 dark:text-emerald-400"
-                >
-                  <Shield className="w-4 h-4 text-emerald-600" />
-                  <span>Admin Panel</span>
-                </button>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onOpenAdmin();
+                      setMobileMenuOpen(false);
+                    }}
+                    className="w-full h-10 px-3 rounded-xl text-xs font-semibold flex items-center gap-3 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/40"
+                  >
+                    <Shield className="w-4 h-4 text-emerald-600" />
+                    <span className="font-bold">Admin Master Control</span>
+                  </button>
+                )}
               </div>
             </div>
 
             <div className="pt-3 border-t border-slate-200 dark:border-[#263244] flex items-center justify-between text-xs text-slate-600 dark:text-[#94A3B8]">
-              <span>Muzamil · Owner</span>
+              <span>{isAdmin ? "Muzamil · Owner (Full Control)" : "Etsy Seller · Active Member"}</span>
               <button
                 type="button"
                 onClick={() => lockApp()}

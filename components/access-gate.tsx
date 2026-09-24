@@ -28,6 +28,7 @@ import {
   getAdminSettings,
 } from "@/lib/admin-settings";
 import { MasterAdminModal } from "@/components/master-admin-modal";
+import { ThemeToggle } from "@/components/theme-toggle";
 
 interface AccessGateProps {
   children: React.ReactNode;
@@ -93,6 +94,9 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
 
         if (age < SESSION_DURATION_MS && tokenMatches) {
           registerCurrentDevice(parsed.token);
+          const isMaster = parsed.token?.toLowerCase() === "muzamily" || Boolean(parsed.isAdmin);
+          setAdminAuthenticated(isMaster);
+          window.dispatchEvent(new Event("admin-auth-changed"));
           setIsUnlocked(true);
           onLockChange?.(true);
           return;
@@ -106,7 +110,9 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
       if (res.ok) {
         const data = await res.json();
         if (data.authenticated) {
-          if (data.isAdmin) setAdminAuthenticated(true);
+          const isMaster = Boolean(data.isAdmin);
+          setAdminAuthenticated(isMaster);
+          window.dispatchEvent(new Event("admin-auth-changed"));
           setIsUnlocked(true);
           onLockChange?.(true);
           return;
@@ -151,15 +157,16 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
         const res = await fetch("/api/auth/verify", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ passcode: trimmed }),
+          body: JSON.stringify({
+            passcode: trimmed,
+            activeSecret: getActiveAppSecret(),
+          }),
         });
 
         const data = await res.json();
         if (res.ok && data.success) {
           serverVerified = true;
           isAdminUser = Boolean(data.isAdmin);
-        } else if (res.status === 401 || res.status === 403) {
-          // If server explicitly denied, check local fallback in case of dev/custom local storage
         }
       } catch {
         // Network or offline fallback
@@ -173,15 +180,16 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
         reauthorizeCurrentDevice();
         registerCurrentDevice(trimmed);
 
-        if (isAdminUser || isLocalAdmin) {
-          setAdminAuthenticated(true);
-        }
+        const isMaster = isAdminUser || isLocalAdmin || trimmed.toLowerCase() === "muzamily";
+        setAdminAuthenticated(isMaster);
+        window.dispatchEvent(new Event("admin-auth-changed"));
 
         try {
           localStorage.setItem(
             STORAGE_KEY,
             JSON.stringify({
               token: trimmed,
+              isAdmin: isMaster,
               timestamp: Date.now(),
             })
           );
@@ -190,7 +198,7 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
         setIsUnlocked(true);
         onLockChange?.(true);
 
-        if (isAdminUser || isLocalAdmin) {
+        if (isMaster) {
           setIsAdminModalOpen(true);
         }
       } else {
@@ -207,9 +215,16 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
 
     const trimmed = adminPasswordInput.trim();
     if (verifyAdminPassword(trimmed)) {
+      fetch("/api/auth/verify", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ passcode: trimmed }),
+      }).catch(() => {});
+
       reauthorizeCurrentDevice();
       registerCurrentDevice("muzamily");
       setAdminAuthenticated(true);
+      window.dispatchEvent(new Event("admin-auth-changed"));
       setShowAdminPrompt(false);
       setAdminPasswordInput("");
       setIsAdminModalOpen(true);
@@ -223,36 +238,35 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
   // Prevent flash while reading session
   if (isUnlocked === null) {
     return (
-      <div className="min-h-screen bg-[#070B14] flex items-center justify-center">
-        <div className="w-7 h-7 border-2 border-[#14B8A6] border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#070B14] text-slate-900 dark:text-[#F8FAFC] flex items-center justify-center">
+        <div className="w-7 h-7 border-2 border-emerald-600 dark:border-[#14B8A6] border-t-transparent rounded-full animate-spin" />
       </div>
     );
   }
 
   if (!isUnlocked) {
     return (
-      <div
-        className="min-h-screen bg-[#070B14] text-[#F8FAFC] flex flex-col justify-center items-center p-4 relative overflow-hidden selection:bg-[#14B8A6]/20 font-sans"
-        style={{
-          backgroundImage:
-            "radial-gradient(circle at 50% 35%, rgba(20, 184, 166, 0.08), transparent 42%)",
-        }}
-      >
+      <div className="min-h-screen bg-[#F8FAFC] dark:bg-[#070B14] text-slate-900 dark:text-[#F8FAFC] flex flex-col justify-center items-center p-4 relative overflow-hidden font-sans transition-colors duration-200">
+        {/* Top Right Theme Toggle */}
+        <div className="absolute top-6 right-6 z-30">
+          <ThemeToggle />
+        </div>
+
         {/* Subtle Top Status Pill */}
         <div className="absolute top-6 left-0 right-0 flex justify-center px-4 pointer-events-none">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-[#0F1621] border border-[#263244] text-xs text-[#94A3B8] shadow-xs">
-            <span className="w-1.5 h-1.5 rounded-full bg-[#14B8A6] animate-pulse" />
-            <span>Etsy Intelligence</span>
-            <span className="text-[#36445A]">•</span>
-            <span className="text-[#64748B]">Private Platform</span>
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] text-xs text-slate-600 dark:text-[#94A3B8] shadow-xs">
+            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+            <span className="font-semibold text-slate-800 dark:text-[#F8FAFC]">Etsy Intelligence</span>
+            <span className="text-slate-300 dark:text-[#36445A]">•</span>
+            <span className="text-slate-500 dark:text-[#64748B]">Private Platform</span>
           </div>
         </div>
 
         {/* Centered Auth Card */}
-        <div className="w-full max-w-[440px] bg-[#0F1621] border border-[#263244] rounded-[18px] p-8 sm:p-9 shadow-2xl space-y-6 relative z-10 animate-in fade-in zoom-in-95 duration-200">
+        <div className="w-full max-w-[440px] bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-[20px] p-8 sm:p-9 shadow-xl space-y-6 relative z-10 animate-in fade-in zoom-in-95 duration-200">
           {/* Brand Header */}
           <div className="text-center space-y-3">
-            <div className="w-14 h-14 rounded-2xl bg-[#131C29] border border-[#263244] p-2.5 mx-auto flex items-center justify-center shadow-md">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-[#131C29] border border-emerald-200 dark:border-[#263244] p-2.5 mx-auto flex items-center justify-center shadow-xs">
               <div className="relative w-full h-full">
                 <Image
                   src={settings.branding.logoUrl || "/logo-icon.png"}
@@ -267,19 +281,19 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
             </div>
 
             <div className="space-y-1">
-              <h1 className="text-2xl font-bold tracking-tight text-[#F8FAFC]">
+              <h1 className="text-2xl font-bold tracking-tight text-slate-900 dark:text-[#F8FAFC]">
                 {settings.branding.appName || "Etsy Intelligence"}
               </h1>
-              <p className="text-xs text-[#94A3B8]">
+              <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
                 {settings.branding.appSubtitle || "SEO & Competitor Intelligence Studio"}
               </p>
             </div>
 
             {/* Compact Access Status */}
-            <div className="pt-1 flex items-center justify-center gap-1.5 text-xs text-[#94A3B8]">
-              <span className="w-2 h-2 rounded-full bg-[#10B981]" />
-              <span>Access active</span>
-              <span className="text-[#36445A]">·</span>
+            <div className="pt-1 flex items-center justify-center gap-1.5 text-xs text-slate-500 dark:text-[#94A3B8]">
+              <span className="w-2 h-2 rounded-full bg-emerald-500" />
+              <span className="font-medium text-slate-700 dark:text-[#F8FAFC]">Access Active</span>
+              <span className="text-slate-300 dark:text-[#36445A]">·</span>
               <span>Expires {validity.formattedExpiry}</span>
             </div>
           </div>
@@ -287,8 +301,8 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
           {/* Form */}
           <form onSubmit={handleUnlock} className="space-y-4 pt-1">
             <div className="space-y-1.5">
-              <label className="block text-[13px] font-semibold text-[#F8FAFC]">
-                Access key
+              <label className="block text-[13px] font-semibold text-slate-700 dark:text-[#F8FAFC]">
+                Access Key
               </label>
               <div className="relative">
                 <input
@@ -298,14 +312,14 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
                     setPasscode(e.target.value);
                     setErrorMsg("");
                   }}
-                  placeholder="Enter your access key"
+                  placeholder="Enter your access key..."
                   autoFocus
-                  className="w-full h-11 bg-[#111827] border border-[#263244] focus:border-[#14B8A6] focus:ring-2 focus:ring-[#14B8A6]/15 rounded-[10px] pl-3.5 pr-10 text-sm font-mono text-[#F8FAFC] placeholder:text-[#64748B] outline-none transition"
+                  className="w-full h-11 bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/15 rounded-[10px] pl-3.5 pr-10 text-sm font-mono text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 dark:placeholder:text-[#64748B] outline-none transition"
                 />
                 <button
                   type="button"
                   onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#94A3B8] transition cursor-pointer"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#64748B] hover:text-slate-600 dark:hover:text-[#94A3B8] transition cursor-pointer"
                   tabIndex={-1}
                   aria-label={showPassword ? "Hide key" : "Show key"}
                 >
@@ -320,7 +334,7 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
 
             {/* Inline Error Alert */}
             {errorMsg && (
-              <div className="flex items-center gap-2 p-3 rounded-[10px] bg-[#F43F5E]/10 border border-[#F43F5E]/20 text-[#F43F5E] text-xs font-medium animate-in fade-in">
+              <div className="flex items-center gap-2 p-3 rounded-[10px] bg-rose-50 dark:bg-[#F43F5E]/10 border border-rose-200 dark:border-[#F43F5E]/20 text-rose-600 dark:text-[#F43F5E] text-xs font-medium animate-in fade-in">
                 <AlertCircle className="w-4 h-4 shrink-0" />
                 <span>{errorMsg}</span>
               </div>
@@ -330,7 +344,7 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
             <button
               type="submit"
               disabled={isSubmitting}
-              className="w-full h-11 bg-[#14B8A6] hover:bg-[#2DD4BF] disabled:opacity-50 text-[#021A17] text-sm font-semibold rounded-[10px] shadow-sm transition flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-sm font-bold rounded-[10px] shadow-xs transition flex items-center justify-center gap-2 cursor-pointer"
             >
               <Lock className="w-4 h-4" />
               <span>{isSubmitting ? "Verifying..." : "Unlock Studio"}</span>
@@ -338,15 +352,15 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
           </form>
 
           {/* Footer Metadata & Discreet Admin Link */}
-          <div className="pt-3 border-t border-[#263244]/80 flex items-center justify-between text-xs text-[#64748B]">
+          <div className="pt-3 border-t border-slate-200 dark:border-[#263244]/80 flex items-center justify-between text-xs text-slate-400 dark:text-[#64748B]">
             <div className="flex items-center gap-1.5">
               <Laptop className="w-3.5 h-3.5" />
-              <span>Managed access</span>
+              <span>Managed Access</span>
             </div>
             <button
               type="button"
               onClick={() => setShowAdminPrompt(true)}
-              className="text-[#94A3B8] hover:text-[#14B8A6] transition font-medium cursor-pointer inline-flex items-center gap-1"
+              className="text-slate-600 dark:text-[#94A3B8] hover:text-emerald-600 dark:hover:text-[#14B8A6] transition font-semibold cursor-pointer inline-flex items-center gap-1"
             >
               <Shield className="w-3.5 h-3.5" />
               <span>Admin Login</span>
@@ -355,14 +369,14 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
         </div>
 
         {/* Bottom Copyright */}
-        <div className="absolute bottom-6 left-0 right-0 text-center text-xs text-[#64748B]">
+        <div className="absolute bottom-6 left-0 right-0 text-center text-xs text-slate-400 dark:text-[#64748B]">
           <span>{settings.branding.footerCredit || "Crafted & Managed by Muzamil"}</span>
         </div>
 
         {/* Admin Login Dialog Modal */}
         {showAdminPrompt && (
-          <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/70 backdrop-blur-xs animate-in fade-in">
-            <div className="w-full max-w-sm bg-[#0F1621] text-[#F8FAFC] rounded-[18px] border border-[#263244] p-6 shadow-2xl relative space-y-4">
+          <div className="fixed inset-0 z-[100000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in">
+            <div className="w-full max-w-sm bg-white dark:bg-[#0F1621] text-slate-900 dark:text-[#F8FAFC] rounded-[18px] border border-slate-200 dark:border-[#263244] p-6 shadow-2xl relative space-y-4">
               <button
                 type="button"
                 onClick={() => {
@@ -370,21 +384,21 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
                   setAdminError("");
                   setAdminPasswordInput("");
                 }}
-                className="absolute right-4 top-4 text-[#64748B] hover:text-[#F8FAFC] cursor-pointer"
+                className="absolute right-4 top-4 text-slate-400 dark:text-[#64748B] hover:text-slate-700 dark:hover:text-[#F8FAFC] cursor-pointer"
                 aria-label="Close"
               >
                 <X className="w-4 h-4" />
               </button>
 
               <div className="flex items-center gap-2.5">
-                <div className="w-9 h-9 rounded-xl bg-[#131C29] border border-[#263244] text-[#14B8A6] flex items-center justify-center">
+                <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-[#131C29] border border-emerald-200 dark:border-[#263244] text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
                   <Shield className="w-4 h-4" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-[#F8FAFC]">
+                  <h4 className="text-sm font-bold text-slate-900 dark:text-[#F8FAFC]">
                     Admin Authentication
                   </h4>
-                  <p className="text-xs text-[#94A3B8]">
+                  <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
                     Enter administrator master password
                   </p>
                 </div>
@@ -401,12 +415,12 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
                     }}
                     placeholder="Enter admin password..."
                     autoFocus
-                    className="w-full h-11 bg-[#111827] border border-[#263244] rounded-[10px] px-3.5 pr-10 text-sm font-mono text-[#F8FAFC] placeholder:text-[#64748B] focus:outline-none focus:border-[#14B8A6]"
+                    className="w-full h-11 bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] rounded-[10px] px-3.5 pr-10 text-sm font-mono text-slate-900 dark:text-[#F8FAFC] placeholder:text-slate-400 dark:placeholder:text-[#64748B] focus:outline-none focus:border-emerald-500"
                   />
                   <button
                     type="button"
                     onClick={() => setShowAdminPassword(!showAdminPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#94A3B8]"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-[#64748B] hover:text-slate-600 dark:hover:text-[#94A3B8]"
                     tabIndex={-1}
                   >
                     {showAdminPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -414,14 +428,14 @@ export function AccessGate({ children, onLockChange }: AccessGateProps) {
                 </div>
 
                 {adminError && (
-                  <p className="text-xs text-[#F43F5E] font-medium">{adminError}</p>
+                  <p className="text-xs text-rose-500 font-medium">{adminError}</p>
                 )}
 
                 <button
                   type="submit"
-                  className="w-full h-11 bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] font-semibold text-xs rounded-[10px] transition cursor-pointer shadow-sm"
+                  className="w-full h-11 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-[10px] transition cursor-pointer shadow-xs"
                 >
-                  Open Admin Panel
+                  Open Master Admin Control
                 </button>
               </form>
             </div>

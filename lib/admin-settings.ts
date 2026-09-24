@@ -135,6 +135,15 @@ export function saveAdminSettings(settings: Partial<AdminSettings>): AdminSettin
         }
       }
       window.dispatchEvent(new CustomEvent("admin-settings-changed", { detail: updated }));
+
+      // Asynchronously sync with server API when running in browser
+      if (typeof window !== "undefined" && window.location?.origin) {
+        fetch(`${window.location.origin}/api/admin/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(updated),
+        }).catch(() => {});
+      }
     } catch {}
   }
   return updated;
@@ -152,6 +161,14 @@ export function resetAdminSettings(): AdminSettings {
       window.dispatchEvent(
         new CustomEvent("admin-settings-changed", { detail: DEFAULT_ADMIN_SETTINGS })
       );
+
+      if (window.location?.origin) {
+        fetch(`${window.location.origin}/api/admin/settings`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(DEFAULT_ADMIN_SETTINGS),
+        }).catch(() => {});
+      }
     } catch {}
   }
   return DEFAULT_ADMIN_SETTINGS;
@@ -177,8 +194,10 @@ export function setAdminAuthenticated(authenticated: boolean) {
   try {
     if (authenticated) {
       sessionStorage.setItem(ADMIN_SESSION_KEY, "true");
+      localStorage.setItem(ADMIN_SESSION_KEY, "true");
     } else {
       sessionStorage.removeItem(ADMIN_SESSION_KEY);
+      localStorage.removeItem(ADMIN_SESSION_KEY);
     }
   } catch {}
 }
@@ -186,7 +205,10 @@ export function setAdminAuthenticated(authenticated: boolean) {
 export function isAdminAuthenticated(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    return sessionStorage.getItem(ADMIN_SESSION_KEY) === "true";
+    return (
+      sessionStorage.getItem(ADMIN_SESSION_KEY) === "true" ||
+      localStorage.getItem(ADMIN_SESSION_KEY) === "true"
+    );
   } catch {
     return false;
   }

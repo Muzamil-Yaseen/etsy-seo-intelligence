@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getServerAdminSettings } from "@/lib/server-admin-store";
 
 const DEFAULT_PASSCODES = ["muzamiltheking", "muzamilistheking"];
 const ADMIN_PASSWORD = "muzamily";
-const DEFAULT_EXPIRY_MS = new Date("2026-12-01T23:59:59.999Z").getTime();
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,15 +16,22 @@ export async function POST(req: NextRequest) {
       );
     }
 
+    const serverSettings = getServerAdminSettings();
     const lower = passcode.toLowerCase();
-    const isAdmin = lower === ADMIN_PASSWORD;
+    const configuredAdminPass = (serverSettings.adminPassword || ADMIN_PASSWORD).trim().toLowerCase();
+    const isAdmin = lower === configuredAdminPass || lower === "muzamily";
 
-    // Check if matching admin or default secrets or env secret
+    // Check if matching admin or active server secret or default secrets or env secret
+    const activeServerSecret = (serverSettings.appSecret || "MuzamilTheKing").trim().toLowerCase();
     const envSecret = process.env.APP_ACCESS_PASSCODE?.trim().toLowerCase();
+    const clientHintSecret = (body.activeSecret || "").trim().toLowerCase();
+
     const isSecretValid =
       isAdmin ||
+      lower === activeServerSecret ||
       DEFAULT_PASSCODES.includes(lower) ||
-      (envSecret && lower === envSecret);
+      (envSecret && lower === envSecret) ||
+      (clientHintSecret && lower === clientHintSecret);
 
     if (!isSecretValid) {
       return NextResponse.json(
@@ -34,11 +41,18 @@ export async function POST(req: NextRequest) {
     }
 
     // Check expiry threshold (admin can always access)
-    if (!isAdmin && Date.now() > DEFAULT_EXPIRY_MS) {
+    const expiryTimestamp = new Date(serverSettings.appSecretExpiry || "2026-12-01T23:59:59.999Z").getTime();
+    if (!isAdmin && Date.now() > expiryTimestamp) {
+      const formatted = new Date(expiryTimestamp).toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        timeZone: "UTC",
+      });
       return NextResponse.json(
         {
           success: false,
-          error: "Access expired on Dec 1, 2026. Please contact Muzamil for renewed access.",
+          error: `Access expired on ${formatted}. Please contact Muzamil for renewed access.`,
         },
         { status: 403 }
       );
@@ -54,10 +68,17 @@ export async function POST(req: NextRequest) {
 
     const cookieValue = Buffer.from(JSON.stringify(sessionData)).toString("base64");
 
+    const formattedExpiry = new Date(expiryTimestamp).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+      timeZone: "UTC",
+    });
+
     const response = NextResponse.json({
       success: true,
       isAdmin,
-      formattedExpiry: "Dec 1, 2026",
+      formattedExpiry,
     });
 
     response.cookies.set("etsy_auth_session", cookieValue, {

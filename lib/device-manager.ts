@@ -108,8 +108,6 @@ export function getCurrentDeviceId(): string {
 export function getActiveAppSecret(): string {
   if (typeof window === "undefined") return DEFAULT_APP_SECRET;
   try {
-    const envPass = process.env.NEXT_PUBLIC_APP_ACCESS_PASSCODE?.trim();
-    if (envPass) return envPass;
     const custom = localStorage.getItem(STORAGE_KEY_SECRET)?.trim();
     if (custom) return custom;
     const adminRaw = localStorage.getItem("etsy_master_admin_settings");
@@ -117,6 +115,8 @@ export function getActiveAppSecret(): string {
       const parsed = JSON.parse(adminRaw);
       if (parsed.appSecret?.trim()) return parsed.appSecret.trim();
     }
+    const envPass = process.env.NEXT_PUBLIC_APP_ACCESS_PASSCODE?.trim();
+    if (envPass) return envPass;
   } catch {}
   return DEFAULT_APP_SECRET;
 }

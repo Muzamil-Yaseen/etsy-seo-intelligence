@@ -52,6 +52,7 @@ import { DevicesAppsModal } from "@/components/devices-apps-modal";
 import { MasterAdminModal } from "@/components/master-admin-modal";
 import { CategoryFinderView } from "@/components/category-finder-view";
 import { TagsExtractorView } from "@/components/tags-extractor-view";
+import { isAdminAuthenticated } from "@/lib/admin-settings";
 import { ProductFacts } from "@/lib/product-facts/types";
 
 // Clean example presets
@@ -115,6 +116,20 @@ export function QuickUserView() {
   const [savedListings, setSavedListings] = useState<SavedListing[]>([]);
   const [isDeviceManagerOpen, setIsDeviceManagerOpen] = useState(false);
   const [isMasterAdminOpen, setIsMasterAdminOpen] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+
+  useEffect(() => {
+    const updateAdminStatus = () => {
+      setIsAdmin(isAdminAuthenticated());
+    };
+    updateAdminStatus();
+    window.addEventListener("admin-auth-changed", updateAdminStatus);
+    window.addEventListener("admin-settings-changed", updateAdminStatus);
+    return () => {
+      window.removeEventListener("admin-auth-changed", updateAdminStatus);
+      window.removeEventListener("admin-settings-changed", updateAdminStatus);
+    };
+  }, []);
 
   useEffect(() => {
     if (typeof window !== "undefined") {
@@ -823,6 +838,7 @@ export function QuickUserView() {
         onOpenFacts={() => setIsFactsDrawerOpen(true)}
         onOpenHistory={() => setIsHistoryOpen(true)}
         savedCount={savedCount}
+        isAdmin={isAdmin}
       >
         <div className="w-full max-w-6xl mx-auto space-y-6">
           {/* DASHBOARD HOME VIEW */}

@@ -227,38 +227,62 @@ export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
   ];
 
   return (
-    <div className="fixed inset-0 z-[99999] flex items-center justify-center p-3 sm:p-6 bg-black/70 backdrop-blur-xs animate-in fade-in duration-150">
-      <div className="relative w-full max-w-[1180px] h-[88vh] max-h-[850px] bg-[#0B1019] text-[#F8FAFC] rounded-[18px] border border-[#263244] shadow-2xl flex flex-col overflow-hidden font-sans">
-        {/* Header Bar */}
-        <div className="h-16 px-6 border-b border-[#263244] flex items-center justify-between bg-[#0F1621] shrink-0">
+    <div className="fixed inset-0 z-[99999] bg-[#070B14] text-[#F8FAFC] flex flex-col h-screen w-screen overflow-hidden font-sans select-none animate-in fade-in duration-150">
+      <div className="relative w-full h-full flex flex-col overflow-hidden">
+        {/* Full-Width Header Bar */}
+        <div className="h-16 px-4 sm:px-6 border-b border-[#263244] flex items-center justify-between bg-[#0F1621] shrink-0">
           <div className="flex items-center gap-3">
-            <div className="w-8 h-8 rounded-[10px] bg-[#14B8A6]/10 border border-[#14B8A6]/20 text-[#14B8A6] flex items-center justify-center">
-              <Shield className="w-4 h-4" />
+            <div className="w-9 h-9 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-400 flex items-center justify-center shadow-xs">
+              <Shield className="w-5 h-5" />
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-base font-bold text-[#F8FAFC] tracking-tight">
-                  Etsy Intelligence Admin
+                <h2 className="text-base sm:text-lg font-bold text-[#F8FAFC] tracking-tight">
+                  Etsy Intelligence Master Control
                 </h2>
-                <span className="px-2 py-0.5 rounded-full text-[11px] font-semibold bg-[#14B8A6]/10 text-[#2DD4BF] border border-[#14B8A6]/20">
+                <span className="px-2 py-0.5 rounded-full text-[10.5px] font-bold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 uppercase tracking-wider">
                   Owner
                 </span>
               </div>
-              <p className="text-xs text-[#94A3B8]">
-                Manage access, AI providers, sessions and application settings.
+              <p className="text-xs text-[#94A3B8] hidden sm:block">
+                Full-spectrum application governance, real-time sessions &amp; platform settings
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-4">
-            <span className="hidden sm:inline-block text-xs text-[#64748B]">
-              Signed in as <strong className="text-[#94A3B8]">Muzamil</strong>
-            </span>
+          {/* Center Prominent Badge */}
+          <div className="hidden lg:flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-emerald-950/60 border border-emerald-500/30 text-emerald-300 text-xs font-semibold shadow-xs">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+            <span>Admin Logged In • Muzamil (Owner) • Full Control Active</span>
+          </div>
+
+          <div className="flex items-center gap-2.5">
             <button
               type="button"
               onClick={onClose}
-              className="w-8 h-8 rounded-[10px] flex items-center justify-center text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#131C29] transition cursor-pointer"
-              aria-label="Close"
+              className="h-9 px-3.5 rounded-xl bg-[#131C29] hover:bg-[#172231] border border-[#263244] text-xs font-semibold text-[#F8FAFC] flex items-center gap-1.5 transition cursor-pointer"
+              title="Return to user workspace"
+            >
+              <Eye className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden sm:inline">Switch to Studio View</span>
+              <span className="sm:hidden">Studio View</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => lockApp()}
+              className="h-9 px-3 rounded-xl bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 border border-rose-500/30 text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer"
+              title="Lock application session"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Lock</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-9 h-9 rounded-xl flex items-center justify-center text-[#64748B] hover:text-[#F8FAFC] hover:bg-[#131C29] border border-transparent hover:border-[#263244] transition cursor-pointer"
+              aria-label="Close Admin"
             >
               <X className="w-4 h-4" />
             </button>
@@ -946,73 +970,115 @@ export function MasterAdminModal({ isOpen, onClose }: MasterAdminModalProps) {
                   </p>
                 </div>
 
-                {/* Access Secret Card */}
-                <div className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-4">
-                  <div className="flex items-center justify-between">
+                {/* Unified Master Access Key & Expiration Card */}
+                <form onSubmit={handleSaveSecretAndExpiry} className="p-6 bg-[#0F1621] border border-[#263244] rounded-[16px] space-y-5">
+                  <div className="flex items-center justify-between border-b border-[#263244] pb-4">
                     <div>
-                      <h4 className="text-sm font-semibold text-[#F8FAFC]">Access Secret</h4>
-                      <p className="text-xs text-[#94A3B8]">Key required for clients to access this studio.</p>
+                      <h4 className="text-base font-bold text-[#F8FAFC] flex items-center gap-2">
+                        <Key className="w-4 h-4 text-emerald-400" />
+                        <span>Active Client Access Key &amp; Validity</span>
+                      </h4>
+                      <p className="text-xs text-[#94A3B8] mt-0.5">
+                        This is the exact passkey regular users need to enter to unlock the platform.
+                      </p>
                     </div>
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-[#10B981]/10 text-[#10B981] border border-[#10B981]/20">
-                      Configured
+                    <span className="px-3 py-1 rounded-full text-xs font-semibold bg-emerald-500/10 text-emerald-400 border border-emerald-500/30 flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>Live &amp; Synchronized</span>
                     </span>
                   </div>
 
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-[#111827] rounded-[10px] border border-[#263244]">
-                    <div>
-                      <div className="font-mono text-sm tracking-widest text-[#94A3B8]">
-                        ••••••••••••••••
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                    {/* Access Secret Input */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-[#F8FAFC]">
+                          Application Secret Key
+                        </label>
+                        <span className="text-[11px] text-[#64748B]">Case-insensitive</span>
                       </div>
-                      <span className="text-[11px] text-[#64748B]">
-                        Active secret stored securely
-                      </span>
+                      <div className="relative">
+                        <input
+                          type={showSecretInDialog ? "text" : "password"}
+                          value={appSecretInput}
+                          onChange={(e) => setAppSecretInput(e.target.value)}
+                          placeholder="e.g. MuzamilTheKing"
+                          className="w-full h-11 bg-[#111827] border border-[#263244] focus:border-emerald-500 rounded-[10px] pl-3.5 pr-10 text-sm font-mono text-[#F8FAFC] placeholder:text-[#64748B] outline-none transition"
+                          required
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowSecretInDialog(!showSecretInDialog)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-[#64748B] hover:text-[#94A3B8] cursor-pointer"
+                          title={showSecretInDialog ? "Hide secret" : "Show secret"}
+                        >
+                          {showSecretInDialog ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                        </button>
+                      </div>
+
+                      {/* Quick Presets */}
+                      <div className="flex items-center gap-2 pt-1 flex-wrap">
+                        <span className="text-[11px] text-[#64748B]">Quick presets:</span>
+                        <button
+                          type="button"
+                          onClick={() => setAppSecretInput("MuzamilTheKing")}
+                          className="px-2 py-0.5 rounded text-[11px] font-mono bg-[#172231] hover:bg-[#1E293B] text-[#94A3B8] hover:text-emerald-400 transition cursor-pointer"
+                        >
+                          MuzamilTheKing
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAppSecretInput("MuzamilIsTheKing")}
+                          className="px-2 py-0.5 rounded text-[11px] font-mono bg-[#172231] hover:bg-[#1E293B] text-[#94A3B8] hover:text-emerald-400 transition cursor-pointer"
+                        >
+                          MuzamilIsTheKing
+                        </button>
+                      </div>
                     </div>
 
-                    <button
-                      type="button"
-                      onClick={() => setShowReplaceSecretDialog(true)}
-                      className="px-3.5 py-1.5 rounded-[10px] bg-[#172231] hover:bg-[#1E293B] border border-[#263244] text-xs font-medium text-[#E2E8F0] transition cursor-pointer"
-                    >
-                      Replace Secret
-                    </button>
-                  </div>
-                </div>
-
-                {/* Expiration Date Card */}
-                <form onSubmit={handleSaveSecretAndExpiry} className="p-5 bg-[#0F1621] border border-[#263244] rounded-[14px] space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-sm font-semibold text-[#F8FAFC]">Access Expiration</h4>
-                      <p className="text-xs text-[#94A3B8]">Set the valid-until date threshold for active credentials.</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 text-xs text-[#14B8A6] font-medium">
-                      <Calendar className="w-3.5 h-3.5" />
-                      <span>{humanExpiry}</span>
+                    {/* Expiration Date Input */}
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className="text-xs font-semibold text-[#F8FAFC]">
+                          Access Expiration Date
+                        </label>
+                        <span className="text-[11px] text-emerald-400 font-medium">{humanExpiry}</span>
+                      </div>
+                      <input
+                        type="date"
+                        value={expiryInput}
+                        onChange={(e) => setExpiryInput(e.target.value)}
+                        className="w-full h-11 bg-[#111827] border border-[#263244] focus:border-emerald-500 rounded-[10px] px-3.5 text-sm font-mono text-[#F8FAFC] outline-none transition cursor-pointer"
+                        required
+                      />
+                      <p className="text-[11px] text-[#64748B] pt-1">
+                        After this date, access requires key renewal from the administrator.
+                      </p>
                     </div>
                   </div>
 
-                  <div className="space-y-1.5 max-w-sm">
-                    <label className="text-xs font-semibold text-[#F8FAFC] block">
-                      Select Expiration Date
-                    </label>
-                    <input
-                      type="date"
-                      value={expiryInput}
-                      onChange={(e) => setExpiryInput(e.target.value)}
-                      className="w-full h-11 bg-[#111827] border border-[#263244] rounded-[10px] px-3.5 text-xs font-mono text-[#F8FAFC] focus:outline-none focus:border-[#14B8A6]"
-                      required
-                    />
-                    <p className="text-xs text-[#94A3B8]">
-                      Access expires <strong>{new Date(`${expiryInput}T00:00:00.000Z`).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" })}</strong>.
-                    </p>
+                  {/* Clarification Callout for Muzamil */}
+                  <div className="p-3.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-xs text-slate-300 flex items-start gap-2.5">
+                    <Shield className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <span className="font-bold text-emerald-400">Two-Tier Access Security:</span>
+                      <p className="text-[11px] text-[#94A3B8] leading-relaxed">
+                        When regular users log in using this Access Key, they are granted full access to the SEO Studio, but <strong>the Admin Panel button is hidden from them</strong>. Only you, logging in with your Master Admin Password (<code className="text-emerald-300 font-mono">muzamily</code>), have access to this full-screen Master Control Center.
+                      </p>
+                    </div>
                   </div>
 
-                  <div className="pt-2 flex justify-end">
+                  {/* Save CTA */}
+                  <div className="pt-2 flex items-center justify-between">
+                    <span className="text-xs text-[#64748B]">
+                      Server synchronization: <strong className="text-emerald-400">Immediate</strong>
+                    </span>
                     <button
                       type="submit"
-                      className="px-4 py-2 bg-[#14B8A6] hover:bg-[#2DD4BF] text-[#021A17] text-xs font-semibold rounded-[10px] transition cursor-pointer shadow-sm"
+                      className="px-5 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition cursor-pointer shadow-sm flex items-center gap-2"
                     >
-                      Save Expiration Date
+                      <Check className="w-4 h-4" />
+                      <span>Save &amp; Deploy Access Key Immediately</span>
                     </button>
                   </div>
                 </form>

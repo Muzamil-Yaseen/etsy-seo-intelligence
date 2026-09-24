@@ -21,7 +21,23 @@ export default function RootLayout({
 }) {
   return (
     <html lang="en" className={`h-full ${manrope.variable}`}>
-      <body className="h-full bg-[#070B14] text-[#F8FAFC] antialiased font-sans">
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              try {
+                var storedTheme = localStorage.getItem('etsy_theme');
+                if (storedTheme === 'dark') {
+                  document.documentElement.classList.add('dark');
+                } else {
+                  document.documentElement.classList.remove('dark');
+                }
+              } catch (e) {}
+            `,
+          }}
+        />
+      </head>
+      <body className="h-full bg-[#F8FAFC] text-slate-900 dark:bg-[#070B14] dark:text-[#F8FAFC] antialiased font-sans transition-colors duration-200">
         {children}
       </body>
     </html>
