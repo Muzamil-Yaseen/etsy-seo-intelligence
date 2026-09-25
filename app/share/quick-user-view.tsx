@@ -55,30 +55,6 @@ import { TagsExtractorView } from "@/components/tags-extractor-view";
 import { isAdminAuthenticated } from "@/lib/admin-settings";
 import { ProductFacts } from "@/lib/product-facts/types";
 
-// Clean example presets
-const PRESETS = [
-  {
-    name: "Ceramic Mugs",
-    description: "Wheel-thrown stoneware coffee mugs",
-    query: "handmade ceramic coffee mug",
-  },
-  {
-    name: "Leather Wallets",
-    description: "Full-grain leather bifold wallets",
-    query: "personalized leather wallet",
-  },
-  {
-    name: "Silver Jewelry",
-    description: "925 sterling silver birth flower necklaces",
-    query: "sterling silver birth flower necklace",
-  },
-  {
-    name: "Wood Cutting Boards",
-    description: "End-grain walnut charcuterie boards",
-    query: "personalized walnut cutting board",
-  },
-];
-
 type MainTab = "overview" | "keywords" | "competitors" | "listing" | "pricing" | "photos";
 type ListingSubTab = "titles" | "description" | "faqs";
 type ApplicationMode = "research" | "optimize";
@@ -683,13 +659,6 @@ export function QuickUserView() {
     handleAnalyzeRef.current = handleAnalyze;
   });
 
-  // Apply Preset & Auto-Analyze for 1-click exploration
-  const handleApplyPreset = (preset: typeof PRESETS[0]) => {
-    handleResetSession();
-    setSearchQuery(preset.query);
-    handleAnalyze(undefined, preset.query);
-  };
-
   // Tag editing functions
   const handleRemoveTag = (indexToRemove: number) => {
     setEditedTags((prev) => prev.filter((_, idx) => idx !== indexToRemove));
@@ -1138,30 +1107,6 @@ export function QuickUserView() {
                     )}
                   </button>
                 </form>
-              </div>
-
-              {/* Clean Presets */}
-              <div className="space-y-2">
-                <span className="text-[11px] font-semibold text-slate-400 dark:text-[#64748B] uppercase tracking-wider block text-center">
-                  Select a category example
-                </span>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  {PRESETS.map((preset) => (
-                    <button
-                      key={preset.name}
-                      type="button"
-                      onClick={() => handleApplyPreset(preset)}
-                      className="p-3 bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] hover:border-emerald-500 rounded-[10px] text-left transition shadow-xs group cursor-pointer"
-                    >
-                      <div className="font-semibold text-xs text-slate-800 dark:text-[#F8FAFC] group-hover:text-emerald-600 dark:group-hover:text-[#14B8A6] transition">
-                        {preset.name}
-                      </div>
-                      <div className="text-[11px] text-slate-400 dark:text-[#64748B] truncate mt-0.5">
-                        {preset.description}
-                      </div>
-                    </button>
-                  ))}
-                </div>
               </div>
             </div>
           ) : (

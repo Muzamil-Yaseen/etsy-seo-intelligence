@@ -23,21 +23,7 @@ interface TagsExtractorViewProps {
 export function TagsExtractorView({ onAnalyzeNiche }: TagsExtractorViewProps) {
   const [inputVal, setInputVal] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [tags, setTags] = useState<string[]>([
-    "ceramic coffee mug",
-    "pottery coffee cup",
-    "handmade stoneware",
-    "unique coffee mug",
-    "tea lover gift",
-    "wheel thrown mug",
-    "artisan ceramic",
-    "large tea cup",
-    "speckled mug",
-    "rustic coffee cup",
-    "clay coffee mug",
-    "housewarming gift",
-    "cozy morning mug",
-  ]);
+  const [tags, setTags] = useState<string[]>([]);
   const [newTag, setNewTag] = useState("");
   const [copiedMode, setCopiedMode] = useState<string | null>(null);
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -143,30 +129,6 @@ export function TagsExtractorView({ onAnalyzeNiche }: TagsExtractorViewProps) {
               Extract tags directly from any Etsy listing URL or product niche. Verifies character counts and formats for 1-click copying.
             </p>
           </div>
-
-          {/* Quick Presets */}
-          <div className="flex items-center gap-1.5 overflow-x-auto pb-1">
-            {[
-              { label: "Mugs", q: "handmade ceramic coffee mug" },
-              { label: "Wallets", q: "personalized leather wallet" },
-              { label: "Jewelry", q: "sterling silver birth flower necklace" },
-            ].map((p, idx) => (
-              <button
-                key={idx}
-                type="button"
-                onClick={() => {
-                  setInputVal(p.q);
-                  setIsLoading(true);
-                  setTimeout(() => {
-                    handleExtract();
-                  }, 50);
-                }}
-                className="px-2.5 py-1 rounded-lg text-xs font-medium bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] text-slate-600 dark:text-[#94A3B8] hover:bg-slate-100 dark:hover:bg-[#172231] transition whitespace-nowrap"
-              >
-                {p.label}
-              </button>
-            ))}
-          </div>
         </div>
 
         {/* Input Bar */}
@@ -199,8 +161,21 @@ export function TagsExtractorView({ onAnalyzeNiche }: TagsExtractorViewProps) {
         )}
       </div>
 
-      {/* Tags Validation & Action Cards */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {tags.length === 0 ? (
+        <div className="bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-2xl p-12 text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+            <Tag className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 dark:text-[#F8FAFC]">
+            No Tags Extracted Yet
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-[#94A3B8] max-w-md mx-auto leading-relaxed">
+            Paste any Etsy listing URL or enter a product keyword above, then click <strong>Extract Tags</strong> to retrieve, validate, and copy 13 tags.
+          </p>
+        </div>
+      ) : (
+        /* Tags Validation & Action Cards */
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Saturation & Stats (1 Col) */}
         <div className="space-y-4">
           <div className="bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-2xl p-5 shadow-xs space-y-4">
@@ -378,6 +353,7 @@ export function TagsExtractorView({ onAnalyzeNiche }: TagsExtractorViewProps) {
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 }

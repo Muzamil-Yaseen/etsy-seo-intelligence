@@ -90,17 +90,19 @@ interface CategoryFinderViewProps {
 
 export function CategoryFinderView({ onSearchNiche }: CategoryFinderViewProps) {
   const [searchTerm, setSearchTerm] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState<CategoryEntry>(CATEGORY_DATABASE[0]);
+  const [selectedCategory, setSelectedCategory] = useState<CategoryEntry | null>(null);
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
 
-  const mediaPlan = getCategoryMediaPlan(selectedCategory.name);
+  const mediaPlan = selectedCategory ? getCategoryMediaPlan(selectedCategory.name) : null;
 
-  const filteredCategories = CATEGORY_DATABASE.filter(
-    (c) =>
-      c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.query.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      c.path.some((p) => p.toLowerCase().includes(searchTerm.toLowerCase()))
-  );
+  const filteredCategories = searchTerm.trim()
+    ? CATEGORY_DATABASE.filter(
+        (c) =>
+          c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.query.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          c.path.some((p) => p.toLowerCase().includes(searchTerm.toLowerCase()))
+      )
+    : [];
 
   const copyText = (key: string, text: string) => {
     navigator.clipboard.writeText(text);
@@ -118,7 +120,7 @@ export function CategoryFinderView({ onSearchNiche }: CategoryFinderViewProps) {
               <FolderTree className="w-5 h-5" />
             </span>
             <h1 className="text-xl font-bold text-slate-900 dark:text-[#F8FAFC]">
-              Category & Taxonomy Finder
+              Category &amp; Taxonomy Finder
             </h1>
           </div>
           <p className="text-xs sm:text-sm text-slate-500 dark:text-[#94A3B8]">
@@ -133,35 +135,77 @@ export function CategoryFinderView({ onSearchNiche }: CategoryFinderViewProps) {
             type="text"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            placeholder="Filter category or niche..."
+            placeholder="Search category or niche (e.g. jewelry, wood)..."
             className="w-full h-10 pl-9 pr-3 rounded-xl bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] text-xs text-slate-800 dark:text-[#F8FAFC] placeholder:text-slate-400 outline-none focus:border-emerald-500 transition"
           />
         </div>
       </div>
 
-      {/* Category Pills Navigation */}
-      <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-        {filteredCategories.map((cat) => {
-          const isSelected = selectedCategory.id === cat.id;
-          return (
-            <button
-              key={cat.id}
-              type="button"
-              onClick={() => setSelectedCategory(cat)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-2 ${
-                isSelected
-                  ? "bg-emerald-600 text-white shadow-xs"
-                  : "bg-white dark:bg-[#0F1621] text-slate-700 dark:text-[#94A3B8] border border-slate-200 dark:border-[#263244] hover:bg-slate-50 dark:hover:bg-[#131C29]"
-              }`}
-            >
-              <span>{cat.name}</span>
-            </button>
-          );
-        })}
-      </div>
+      {/* Matching Categories when searching */}
+      {searchTerm.trim() && (
+        <div className="space-y-2">
+          <span className="text-xs font-semibold text-slate-500 dark:text-[#94A3B8]">
+            {filteredCategories.length > 0
+              ? `Matching Categories (${filteredCategories.length}):`
+              : "No categories matching this query. Try searching for jewelry, wallet, wood, pottery, or planner."}
+          </span>
+          {filteredCategories.length > 0 && (
+            <div className="flex items-center gap-2 overflow-x-auto pb-1">
+              {filteredCategories.map((cat) => (
+                <button
+                  key={cat.id}
+                  type="button"
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition cursor-pointer flex items-center gap-2 ${
+                    selectedCategory?.id === cat.id
+                      ? "bg-emerald-600 text-white shadow-xs"
+                      : "bg-white dark:bg-[#0F1621] text-slate-700 dark:text-[#94A3B8] border border-slate-200 dark:border-[#263244] hover:bg-slate-50 dark:hover:bg-[#131C29]"
+                  }`}
+                >
+                  <FolderTree className="w-3.5 h-3.5" />
+                  <span>{cat.name}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Main Details Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main Content: Empty State vs Selected Category Details */}
+      {!selectedCategory ? (
+        <div className="bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-2xl p-12 text-center space-y-3">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400 flex items-center justify-center mx-auto">
+            <FolderTree className="w-6 h-6" />
+          </div>
+          <h3 className="text-base font-bold text-slate-900 dark:text-[#F8FAFC]">
+            No Category Selected
+          </h3>
+          <p className="text-xs sm:text-sm text-slate-500 dark:text-[#94A3B8] max-w-md mx-auto leading-relaxed">
+            Search for your product niche or category in the box above to inspect official Etsy taxonomy paths, mandatory attributes, and tailored 10-photo listing requirements.
+          </p>
+        </div>
+      ) : mediaPlan ? (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between p-3.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/40 rounded-xl">
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold text-slate-600 dark:text-[#94A3B8]">Active Category:</span>
+              <span className="text-xs font-bold text-emerald-800 dark:text-emerald-300">
+                {selectedCategory.name}
+              </span>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedCategory(null);
+                setSearchTerm("");
+              }}
+              className="text-xs font-semibold text-slate-600 hover:text-slate-900 dark:text-[#94A3B8] dark:hover:text-white cursor-pointer px-2.5 py-1 rounded-lg bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244]"
+            >
+              Change Category
+            </button>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left Column: Official Taxonomy & Attributes (1 Col) */}
         <div className="space-y-6">
           {/* Category Path Card */}
@@ -321,6 +365,8 @@ export function CategoryFinderView({ onSearchNiche }: CategoryFinderViewProps) {
           </div>
         </div>
       </div>
+      </div>
+      ) : null}
     </div>
   );
 }

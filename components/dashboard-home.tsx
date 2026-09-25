@@ -26,29 +26,6 @@ import { SavedListing } from "@/components/history-drawer";
 import { ListingDownloaderData } from "@/components/listing-downloader-modal";
 import { ViewTab } from "@/components/app-shell";
 
-export const DASHBOARD_PRESETS = [
-  {
-    name: "Ceramic Mugs",
-    description: "Wheel-thrown stoneware coffee mugs",
-    query: "handmade ceramic coffee mug",
-  },
-  {
-    name: "Leather Wallets",
-    description: "Full-grain leather bifold wallets",
-    query: "personalized leather wallet",
-  },
-  {
-    name: "Silver Jewelry",
-    description: "925 sterling silver birth flower necklaces",
-    query: "sterling silver birth flower necklace",
-  },
-  {
-    name: "Wood Cutting Boards",
-    description: "End-grain walnut charcuterie boards",
-    query: "personalized walnut cutting board",
-  },
-];
-
 interface DashboardHomeProps {
   searchQuery: string;
   setSearchQuery: (query: string) => void;
@@ -440,33 +417,6 @@ export function DashboardHome({
                 })}
               </div>
             )}
-          </div>
-
-          {/* Category Example Presets */}
-          <div className="pt-2 border-t border-slate-100 dark:border-[#263244]">
-            <span className="text-[11px] font-semibold text-slate-400 dark:text-[#64748B] uppercase tracking-wider block mb-2">
-              Or explore popular niche presets:
-            </span>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-              {DASHBOARD_PRESETS.map((preset) => (
-                <button
-                  key={preset.name}
-                  type="button"
-                  onClick={() => {
-                    setSearchQuery(preset.query);
-                    onAnalyze(undefined, preset.query);
-                  }}
-                  className="p-3 bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] hover:border-emerald-500 rounded-xl text-left transition cursor-pointer group shadow-2xs"
-                >
-                  <div className="font-semibold text-xs text-slate-800 dark:text-[#F8FAFC] group-hover:text-emerald-600 transition">
-                    {preset.name}
-                  </div>
-                  <div className="text-[11px] text-slate-500 dark:text-[#64748B] truncate mt-0.5">
-                    {preset.description}
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         </form>
       </div>
