@@ -1,30 +1,7 @@
 "use client";
 
 import React, { useState, useMemo, useEffect } from "react";
-import {
-  DollarSign,
-  Info,
-  TrendingUp,
-  Percent,
-  Calculator,
-  ShieldCheck,
-  AlertCircle,
-  Globe,
-  ArrowRight,
-  CheckCircle2,
-  Truck,
-  Sparkles,
-  SlidersHorizontal,
-} from "lucide-react";
-import {
-  calculateEtsyFees,
-  calculatePriceQuartiles,
-  calculateTargetPriceFromMargin,
-  ETSY_REGIONS,
-  EtsyRegion,
-  OffsiteAdsTier,
-  PriceQuartiles,
-} from "@/lib/fees/etsy-fees";
+import { Calculator } from "lucide-react";
 
 interface PricingCalculatorProps {
   prices?: (string | number)[];
@@ -33,794 +10,479 @@ interface PricingCalculatorProps {
   initialPrice?: number;
 }
 
+interface CountryConfig {
+  label: string;
+  pct: number;
+  fixed: number;
+}
+
+const COUNTRIES: Record<string, CountryConfig> = {
+  US: { label: "United States", pct: 0.03, fixed: 0.25 },
+  GB: { label: "United Kingdom", pct: 0.04, fixed: 0.2 },
+  CA: { label: "Canada", pct: 0.03, fixed: 0.25 },
+  AU: { label: "Australia", pct: 0.03, fixed: 0.25 },
+  DE: { label: "Germany", pct: 0.04, fixed: 0.3 },
+  FR: { label: "France", pct: 0.04, fixed: 0.3 },
+  IN: { label: "India", pct: 0.03, fixed: 0.25 },
+  OTHER: { label: "Other / not listed", pct: 0.04, fixed: 0.3 },
+};
+
+const CIRCUMFERENCE = 2 * Math.PI * 42; // ~263.89378
+
+const r = (val: number): number => (Number.isFinite(val) && val > 0 ? val : 0);
+
+const parseNum = (val: string): number => {
+  const s = parseFloat(val);
+  return Number.isFinite(s) ? s : 0;
+};
+
+const formatMoney = (val: number): string => {
+  const num = Number.isFinite(val) ? val : 0;
+  return "$" + num.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+};
+
+interface MoneyFieldProps {
+  label: string;
+  value: string;
+  onChange: (val: string) => void;
+  hint?: string;
+}
+
+function MoneyField({ label, value, onChange, hint }: MoneyFieldProps) {
+  return (
+    <label className="fc-field">
+      <span className="fc-label">
+        {label}
+        {hint && (
+          <span className="fc-hint" title={hint} aria-hidden="true">
+            ?
+          </span>
+        )}
+      </span>
+      <span className="fc-money">
+        <span className="fc-unit">$</span>
+        <input
+          type="number"
+          inputMode="decimal"
+          min="0"
+          step="0.01"
+          value={value}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder="0"
+        />
+      </span>
+    </label>
+  );
+}
+
 export function PricingCalculator({
   prices = [],
-  productNoun = "Item",
+  productNoun,
   initialCogs,
   initialPrice,
 }: PricingCalculatorProps) {
-  // Selected Region / Market Currency
-  const [selectedRegion, setSelectedRegion] = useState<EtsyRegion>("US");
-
-  // Parse numeric values from input competitor prices
-  const parsedPrices = useMemo(() => {
-    return prices
-      .map((p) => {
-        if (typeof p === "number") return p > 0 ? p : null;
-        if (!p) return null;
-        const cleaned = String(p).replace(/[^0-9.]/g, "");
-        const num = parseFloat(cleaned);
-        return isNaN(num) || num <= 0 ? null : num;
-      })
-      .filter((n): n is number => n !== null);
-  }, [prices]);
-
-  // Compute Statistical / Competitor Benchmarks (supports 1, 2, 3, or more listings)
-  const quartiles = useMemo<PriceQuartiles | null>(() => {
-    return calculatePriceQuartiles(parsedPrices, ETSY_REGIONS[selectedRegion].currencyCode);
-  }, [parsedPrices, selectedRegion]);
-
-  const isQuartilesAvailable = Boolean(quartiles && quartiles.isSufficient);
-  const medianPrice = isQuartilesAvailable && quartiles?.marketMedian !== undefined
-    ? quartiles.marketMedian
-    : (initialPrice || 25.0);
-  const p25Price = isQuartilesAvailable && quartiles?.lowerMarketRange !== undefined
-    ? quartiles.lowerMarketRange
-    : null;
-  const p75Price = isQuartilesAvailable && quartiles?.upperMarketRange !== undefined
-    ? quartiles.upperMarketRange
-    : null;
-
-  // Active positioning tier selection
-  const [activeTier, setActiveTier] = useState<"low" | "median" | "premium" | "custom">("median");
-  
-  // Retail price state: defaults to competitor median if available, otherwise initialPrice or $25
-  const [targetPrice, setTargetPrice] = useState<number>(() => {
-    if (initialPrice && initialPrice > 0) return initialPrice;
-    if (isQuartilesAvailable && quartiles?.marketMedian) return quartiles.marketMedian;
-    return 25.0;
-  });
-
-  // If quartiles become available and initialPrice was not explicitly provided, align to median
-  useEffect(() => {
-    if (isQuartilesAvailable && quartiles?.marketMedian && !initialPrice) {
-      setTargetPrice(quartiles.marketMedian);
+  // Determine sensible default sale price from competitor benchmark or props
+  const defaultSalePrice = useMemo(() => {
+    if (initialPrice && initialPrice > 0) return String(initialPrice);
+    if (prices && prices.length > 0) {
+      const parsed = prices
+        .map((p) => {
+          if (typeof p === "number") return p > 0 ? p : null;
+          const cleaned = String(p).replace(/[^0-9.]/g, "");
+          const num = parseFloat(cleaned);
+          return isNaN(num) || num <= 0 ? null : num;
+        })
+        .filter((n): n is number => n !== null);
+      if (parsed.length > 0) {
+        parsed.sort((a, b) => a - b);
+        const mid = parsed[Math.floor(parsed.length / 2)];
+        return String(mid.toFixed(2));
+      }
     }
-  }, [isQuartilesAvailable, quartiles?.marketMedian, initialPrice]);
+    return "25";
+  }, [prices, initialPrice]);
 
-  // Shipping charged to buyer (revenue to seller)
-  const [shippingChargedInput, setShippingChargedInput] = useState<string>("0.00");
-  const numShippingCharged = useMemo(() => {
-    const val = parseFloat(shippingChargedInput);
-    return isNaN(val) || val < 0 ? 0 : val;
-  }, [shippingChargedInput]);
-
-  // Cost of Goods Sold (COGS)
-  const [cogsInput, setCogsInput] = useState<string>(
-    initialCogs !== undefined && initialCogs !== null ? String(initialCogs) : ""
+  // Form Inputs
+  const [salePrice, setSalePrice] = useState<string>(defaultSalePrice);
+  const [shippingPrice, setShippingPrice] = useState<string>("5");
+  const [discountValue, setDiscountValue] = useState<string>("");
+  const [discountType, setDiscountType] = useState<"amount" | "percent">("amount");
+  const [costOfItem, setCostOfItem] = useState<string>(
+    initialCogs !== undefined && initialCogs !== null && initialCogs > 0 ? String(initialCogs) : "6"
   );
-  const numCogs = useMemo(() => {
-    if (!cogsInput.trim()) return null;
-    const val = parseFloat(cogsInput);
-    return isNaN(val) || val < 0 ? null : val;
-  }, [cogsInput]);
+  const [shippingCost, setShippingCost] = useState<string>("4");
+  const [advertising, setAdvertising] = useState<"none" | "offsite">("none");
+  const [country, setCountry] = useState<string>("US");
 
-  // Actual shipping / postage cost paid by seller
-  const [shippingCostInput, setShippingCostInput] = useState<string>("0.00");
-  const numShippingCost = useMemo(() => {
-    const val = parseFloat(shippingCostInput);
-    return isNaN(val) || val < 0 ? 0 : val;
-  }, [shippingCostInput]);
+  // Keep synced if initialPrice / initialCogs changes externally
+  useEffect(() => {
+    if (initialPrice && initialPrice > 0) {
+      setSalePrice(String(initialPrice));
+    }
+  }, [initialPrice]);
 
-  // Offsite Ads Tier (none 0%, under10k 15%, over10k 12%)
-  const [offsiteAdsTier, setOffsiteAdsTier] = useState<OffsiteAdsTier>("none");
+  useEffect(() => {
+    if (initialCogs !== undefined && initialCogs !== null && initialCogs > 0) {
+      setCostOfItem(String(initialCogs));
+    }
+  }, [initialCogs]);
 
-  // Onsite Etsy Ads spend per sale
-  const [etsyAdsInput, setEtsyAdsInput] = useState<string>("0.00");
-  const numEtsyAds = useMemo(() => {
-    const val = parseFloat(etsyAdsInput);
-    return isNaN(val) || val < 0 ? 0 : val;
-  }, [etsyAdsInput]);
+  // Calculation Engine matching exact EverBee math
+  const calc = useMemo(() => {
+    const rawSale = r(parseNum(salePrice));
+    const rawShipCharged = r(parseNum(shippingPrice));
+    const rawDiscount = r(parseNum(discountValue));
 
-  // Reverse Target Margin State
-  const [targetMarginInput, setTargetMarginInput] = useState<number>(50);
-  const [showAdvancedFees, setShowAdvancedFees] = useState<boolean>(false);
+    const discountAmount =
+      discountType === "percent"
+        ? rawSale * (rawDiscount / 100)
+        : Math.min(rawDiscount, rawSale);
 
-  // Quick price adjuster
-  const adjustPrice = (delta: number) => {
-    setActiveTier("custom");
-    setTargetPrice((prev) => Math.max(1, Math.round((prev + delta) * 100) / 100));
-  };
+    const discountedSales = Math.max(0, rawSale - discountAmount);
+    const totalRev = discountedSales + rawShipCharged;
 
-  // Run region-aware Etsy fee calculation
-  const feeDetails = useMemo(() => {
-    return calculateEtsyFees(targetPrice, numCogs, selectedRegion, {
-      shippingCharged: numShippingCharged,
-      shippingCost: numShippingCost,
-      offsiteAdsTier,
-      etsyAdsSpend: numEtsyAds,
+    // Fees
+    const listingFee = 0.2;
+    const transactionFee = 0.065 * totalRev;
+    const cConfig = COUNTRIES[country] ?? COUNTRIES.US;
+    const processingFee = totalRev > 0 ? cConfig.pct * totalRev + cConfig.fixed : 0;
+    const advertisingFee = advertising === "offsite" ? 0.15 * totalRev : 0;
+    const totalFees = listingFee + transactionFee + processingFee + advertisingFee;
+
+    // Costs
+    const cogs = r(parseNum(costOfItem));
+    const shipCost = r(parseNum(shippingCost));
+    const totalCosts = cogs + shipCost;
+
+    // Net Profit & Margin
+    const netProfit = totalRev - totalFees - totalCosts;
+    const margin = totalRev > 0 ? netProfit / totalRev : 0;
+
+    return {
+      revenue: {
+        sales: rawSale,
+        shipping: rawShipCharged,
+        discount: discountAmount,
+        total: totalRev,
+      },
+      fees: {
+        listing: listingFee,
+        transaction: transactionFee,
+        processing: processingFee,
+        advertising: advertisingFee,
+        total: totalFees,
+      },
+      costs: {
+        cogs,
+        shipping: shipCost,
+        total: totalCosts,
+      },
+      netProfit,
+      margin,
+    };
+  }, [
+    salePrice,
+    shippingPrice,
+    discountValue,
+    discountType,
+    costOfItem,
+    shippingCost,
+    advertising,
+    country,
+  ]);
+
+  // Donut Segments
+  const segments = useMemo(() => {
+    const rawSegments = [
+      { key: "profit", label: "Net profit", value: Math.max(0, calc.netProfit), color: "var(--eb-green)" },
+      { key: "fees", label: "Etsy fees", value: calc.fees.total, color: "var(--eb-accent)" },
+      { key: "cogs", label: "Cost of goods", value: calc.costs.cogs, color: "var(--eb-brand)" },
+      { key: "ship", label: "Shipping cost", value: calc.costs.shipping, color: "var(--eb-brand-2)" },
+    ];
+
+    const totalVal = rawSegments.reduce((acc, s) => acc + s.value, 0);
+    let cumulative = 0;
+
+    return rawSegments.map((s) => {
+      const share = totalVal > 0 ? s.value / totalVal : 0;
+      const dash = share * CIRCUMFERENCE;
+      const offset = -cumulative * CIRCUMFERENCE;
+      cumulative += share;
+      return {
+        ...s,
+        dash,
+        offset,
+      };
     });
-  }, [targetPrice, numCogs, selectedRegion, numShippingCharged, numShippingCost, offsiteAdsTier, numEtsyAds]);
+  }, [calc]);
 
-  const regionConfig = ETSY_REGIONS[selectedRegion];
-  const sym = regionConfig.currencySymbol;
-
-  // Suggested price based on reverse margin calculator
-  const reverseSuggestedPrice = useMemo(() => {
-    if (numCogs === null || numCogs <= 0) return null;
-    return calculateTargetPriceFromMargin({
-      targetMarginPercent: targetMarginInput,
-      cogs: numCogs,
-      shippingCost: numShippingCost,
-      shippingCharged: numShippingCharged,
-      region: selectedRegion,
-      offsiteAdsTier,
-      etsyAdsSpend: numEtsyAds,
-    });
-  }, [numCogs, targetMarginInput, numShippingCost, numShippingCharged, selectedRegion, offsiteAdsTier, numEtsyAds]);
+  const isLoss = calc.netProfit < 0;
 
   return (
-    <div className="bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] rounded-2xl p-6 sm:p-7 space-y-6 text-slate-900 dark:text-[#F8FAFC] shadow-xs">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-[#263244] pb-5">
+    <div className="space-y-4">
+      {/* Header bar */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-200 dark:border-[#263244]">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-[#14B8A6]/10 text-emerald-600 dark:text-[#14B8A6] flex items-center justify-center font-bold">
-            <DollarSign className="w-4 h-4 text-emerald-600 dark:text-[#14B8A6]" />
+          <div className="w-10 h-10 rounded-xl bg-orange-50 dark:bg-orange-950/40 border border-orange-200 dark:border-orange-800/60 flex items-center justify-center text-orange-600 dark:text-orange-400 shrink-0">
+            <Calculator className="w-5 h-5" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-[#F8FAFC] tracking-tight">
-                Pricing &amp; Margins
-              </h3>
-              <span className="hidden sm:inline-flex items-center px-2 py-0.5 rounded text-[11px] font-medium bg-slate-100 dark:bg-[#131C29] text-slate-600 dark:text-[#94A3B8] border border-slate-200 dark:border-[#263244]">
-                Official {regionConfig.countryName} Schedule
-              </span>
-            </div>
-            <p className="text-xs text-slate-500 dark:text-[#94A3B8] mt-0.5">
-              Grounded in real competitor price quartiles and official regional commission schedules.
+            <h2 className="text-base font-bold text-slate-900 dark:text-[#F8FAFC]">
+              Etsy Fee & Profit Calculator
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-[#94A3B8]">
+              {productNoun
+                ? `Simulate real margins, payment processing, and listing fees for "${productNoun}".`
+                : "See official Etsy transaction fees, payment processing, and real net profit."}
             </p>
           </div>
-        </div>
-
-        {/* Region / Currency Switcher */}
-        <div className="flex items-center gap-2 self-start sm:self-center">
-          <Globe className="w-4 h-4 text-slate-400 dark:text-[#64748B]" />
-          <select
-            value={selectedRegion}
-            onChange={(e) => setSelectedRegion(e.target.value as EtsyRegion)}
-            className="h-9 px-2.5 bg-white dark:bg-[#111827] border border-slate-200 dark:border-[#263244] rounded-lg text-xs font-semibold text-slate-900 dark:text-[#F8FAFC] outline-none focus:border-emerald-500 transition"
-          >
-            <option value="US">United States (USD $)</option>
-            <option value="UK">United Kingdom (GBP £)</option>
-            <option value="CA">Canada (CAD CA$)</option>
-            <option value="AU">Australia (AUD A$)</option>
-            <option value="EU">European Union (EUR €)</option>
-          </select>
         </div>
       </div>
 
-      {/* Competitor Price Benchmarks Ribbon */}
-      <div className="space-y-2.5">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <TrendingUp className="w-4 h-4 text-emerald-600 dark:text-[#14B8A6]" />
-            <span className="text-xs font-bold text-slate-900 dark:text-[#F8FAFC] uppercase tracking-wider">
-              Competitor Price Benchmarks
-            </span>
-          </div>
-          <span className="text-[11px] font-medium text-slate-500 dark:text-[#94A3B8]">
-            {quartiles && quartiles.isSufficient
-              ? `${quartiles.sampleSize} competitor${quartiles.sampleSize === 1 ? "" : "s"} benchmarked`
-              : "No competitor prices found"}
-          </span>
-        </div>
-
-        {quartiles && quartiles.isSufficient ? (
-          <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-            {/* Min */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] space-y-1">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8] block uppercase tracking-wider">
-                Lowest Competitor
-              </span>
-              <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-[#F8FAFC]">
-                {sym}{quartiles.marketMin !== undefined ? quartiles.marketMin.toFixed(2) : "—"}
-              </div>
-              <p className="text-[10px] text-slate-400 dark:text-[#64748B]">Lowest active price</p>
-            </div>
-
-            {/* P25 / Lower */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] space-y-1">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8] block uppercase tracking-wider">
-                Entry Tier (P25)
-              </span>
-              <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-[#F8FAFC]">
-                {sym}{quartiles.lowerMarketRange !== undefined ? quartiles.lowerMarketRange.toFixed(2) : "—"}
-              </div>
-              <p className="text-[10px] text-slate-400 dark:text-[#64748B]">Volume &amp; fast reviews</p>
-            </div>
-
-            {/* Median Sweet Spot */}
-            <div className="p-3.5 rounded-xl bg-emerald-50/80 dark:bg-[#14B8A6]/10 border-2 border-emerald-500 dark:border-[#14B8A6] space-y-1 relative shadow-xs">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-bold text-emerald-800 dark:text-[#2DD4BF] block uppercase tracking-wider">
-                  Market Median (P50)
+      {/* EverBee Fee Calculator Layout */}
+      <div className="fee-calc">
+        {/* Left Inputs Card */}
+        <div className="fc-card fc-inputs">
+          {/* Group 1: Revenue */}
+          <fieldset className="fc-group">
+            <legend>Revenue</legend>
+            <MoneyField
+              label="Sale price"
+              value={salePrice}
+              onChange={setSalePrice}
+              hint="Item price the buyer pays"
+            />
+            <MoneyField
+              label="Shipping charged"
+              value={shippingPrice}
+              onChange={setShippingPrice}
+              hint="Shipping you charge the buyer"
+            />
+            <label className="fc-field">
+              <span className="fc-label">Discount</span>
+              <span className="fc-money fc-discount">
+                <span className="fc-unit">{discountType === "amount" ? "$" : "%"}</span>
+                <input
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="0.01"
+                  placeholder="0"
+                  value={discountValue}
+                  onChange={(e) => setDiscountValue(e.target.value)}
+                />
+                <span className="fc-seg" role="group" aria-label="Discount type">
+                  <button
+                    type="button"
+                    className={discountType === "amount" ? "on" : ""}
+                    onClick={() => setDiscountType("amount")}
+                    aria-pressed={discountType === "amount"}
+                  >
+                    $
+                  </button>
+                  <button
+                    type="button"
+                    className={discountType === "percent" ? "on" : ""}
+                    onClick={() => setDiscountType("percent")}
+                    aria-pressed={discountType === "percent"}
+                  >
+                    %
+                  </button>
                 </span>
-                <span className="px-1.5 py-0.2 bg-emerald-600 dark:bg-[#14B8A6] text-white dark:text-[#021A17] text-[9px] font-bold rounded">
-                  Sweet Spot
-                </span>
-              </div>
-              <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-[#F8FAFC]">
-                {sym}{quartiles.marketMedian !== undefined ? quartiles.marketMedian.toFixed(2) : "—"}
-              </div>
-              <p className="text-[10px] text-emerald-700 dark:text-[#2DD4BF] font-medium">Equilibrium pricing</p>
-            </div>
-
-            {/* P75 / Upper */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] space-y-1">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8] block uppercase tracking-wider">
-                Upper Tier (P75)
               </span>
-              <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-[#F8FAFC]">
-                {sym}{quartiles.upperMarketRange !== undefined ? quartiles.upperMarketRange.toFixed(2) : "—"}
-              </div>
-              <p className="text-[10px] text-slate-400 dark:text-[#64748B]">Custom / Artisan craft</p>
-            </div>
+            </label>
+          </fieldset>
 
-            {/* Max */}
-            <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] space-y-1 col-span-2 sm:col-span-1">
-              <span className="text-[11px] font-semibold text-slate-500 dark:text-[#94A3B8] block uppercase tracking-wider">
-                Highest Competitor
-              </span>
-              <div className="text-lg sm:text-xl font-bold text-slate-900 dark:text-[#F8FAFC]">
-                {sym}{quartiles.marketMax !== undefined ? quartiles.marketMax.toFixed(2) : "—"}
-              </div>
-              <p className="text-[10px] text-slate-400 dark:text-[#64748B]">Luxury / High-end cap</p>
-            </div>
-          </div>
-        ) : (
-          <div className="p-4 rounded-xl bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] text-xs text-slate-600 dark:text-[#94A3B8] space-y-1.5">
-            <div className="flex items-center gap-2">
-              <Info className="w-4 h-4 text-emerald-600 dark:text-[#14B8A6] shrink-0" />
-              <span className="font-bold text-slate-900 dark:text-[#F8FAFC]">
-                Add 1 to 3 Competitors for Instant Price Benchmarking
-              </span>
-            </div>
-            <p className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
-              When you add competitor listings using the browser extension or manual slots, real market min, median sweet spot, and upper tiers populate here automatically. You can enter your retail price and material costs below anytime.
-            </p>
-          </div>
-        )}
-      </div>
+          {/* Group 2: Your costs */}
+          <fieldset className="fc-group">
+            <legend>Your costs</legend>
+            <MoneyField
+              label="Cost of item"
+              value={costOfItem}
+              onChange={setCostOfItem}
+              hint="What the product costs you to make/buy"
+            />
+            <MoneyField
+              label="Shipping cost"
+              value={shippingCost}
+              onChange={setShippingCost}
+              hint="What you pay to ship the order"
+            />
+          </fieldset>
 
-      {/* Strategic Positioning Quick-Select Buttons */}
-      {quartiles && quartiles.isSufficient && quartiles.lowerMarketRange && quartiles.marketMedian && quartiles.upperMarketRange && (
-        <div className="space-y-2">
-          <span className="text-xs font-semibold text-slate-700 dark:text-slate-300 uppercase tracking-wider block">
-            Positioning Strategies:
-          </span>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {/* Low Tier */}
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTier("low");
-                setTargetPrice(quartiles.lowerMarketRange!);
-              }}
-              className={`p-3.5 rounded-xl text-left border transition flex flex-col justify-between gap-2.5 cursor-pointer ${
-                activeTier === "low"
-                  ? "bg-emerald-50 dark:bg-[#14B8A6]/10 text-slate-900 dark:text-[#F8FAFC] border-emerald-500 dark:border-[#14B8A6] shadow-xs"
-                  : "bg-slate-50 dark:bg-[#131C29] border-slate-200 dark:border-[#263244] text-slate-900 dark:text-[#F8FAFC] hover:border-slate-300 dark:hover:border-[#36445A]"
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-bold uppercase tracking-wider ${activeTier === "low" ? "text-emerald-700 dark:text-[#2DD4BF]" : "text-slate-500 dark:text-[#94A3B8]"}`}>
-                    Volume Entry (P25)
-                  </span>
-                  <span className="text-base font-bold">
-                    {sym}{quartiles.lowerMarketRange.toFixed(2)}
-                  </span>
-                </div>
-                <p className={`text-xs mt-1.5 leading-relaxed ${activeTier === "low" ? "text-slate-700 dark:text-[#E2E8F0]" : "text-slate-500 dark:text-[#94A3B8]"}`}>
-                  Priced to gain immediate sales velocity and early 5-star customer reviews.
-                </p>
-              </div>
-              <div className="pt-2 border-t border-slate-200 dark:border-[#263244] text-xs font-medium">
-                <span className={activeTier === "low" ? "text-emerald-600 dark:text-[#2DD4BF] font-semibold" : "text-slate-400 dark:text-[#64748B]"}>
-                  {activeTier === "low" ? "✓ Selected" : "Use Entry Tier"}
-                </span>
-              </div>
-            </button>
-
-            {/* Median Tier */}
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTier("median");
-                setTargetPrice(quartiles.marketMedian!);
-              }}
-              className={`p-3.5 rounded-xl text-left border-2 transition flex flex-col justify-between gap-2.5 cursor-pointer ${
-                activeTier === "median"
-                  ? "bg-emerald-50 dark:bg-[#14B8A6]/15 text-slate-900 dark:text-[#F8FAFC] border-emerald-500 dark:border-[#14B8A6] shadow-xs"
-                  : "bg-slate-50 dark:bg-[#131C29] border-slate-200 dark:border-[#14B8A6]/40 text-slate-900 dark:text-[#F8FAFC] hover:border-emerald-500 dark:hover:border-[#14B8A6]"
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-bold uppercase tracking-wider ${activeTier === "median" ? "text-emerald-700 dark:text-[#2DD4BF]" : "text-emerald-600 dark:text-[#14B8A6]"}`}>
-                    Market Median (P50)
-                  </span>
-                  <span className="text-base font-bold">
-                    {sym}{quartiles.marketMedian.toFixed(2)}
-                  </span>
-                </div>
-                <p className={`text-xs mt-1.5 leading-relaxed ${activeTier === "median" ? "text-slate-700 dark:text-[#E2E8F0]" : "text-slate-500 dark:text-[#94A3B8]"}`}>
-                  Market equilibrium sweet spot. Matches top competitors while preserving solid margins.
-                </p>
-              </div>
-              <div className="pt-2 border-t border-slate-200 dark:border-[#263244] text-xs font-medium">
-                <span className={activeTier === "median" ? "text-emerald-700 dark:text-[#2DD4BF] font-semibold" : "text-emerald-600 dark:text-[#14B8A6] font-semibold"}>
-                  {activeTier === "median" ? "✓ Selected (Recommended)" : "Use Market Median"}
-                </span>
-              </div>
-            </button>
-
-            {/* Premium Tier */}
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTier("premium");
-                setTargetPrice(quartiles.upperMarketRange!);
-              }}
-              className={`p-3.5 rounded-xl text-left border transition flex flex-col justify-between gap-2.5 cursor-pointer ${
-                activeTier === "premium"
-                  ? "bg-emerald-50 dark:bg-[#14B8A6]/10 text-slate-900 dark:text-[#F8FAFC] border-emerald-500 dark:border-[#14B8A6] shadow-xs"
-                  : "bg-slate-50 dark:bg-[#131C29] border-slate-200 dark:border-[#263244] text-slate-900 dark:text-[#F8FAFC] hover:border-slate-300 dark:hover:border-[#36445A]"
-              }`}
-            >
-              <div>
-                <div className="flex items-center justify-between">
-                  <span className={`text-xs font-bold uppercase tracking-wider ${activeTier === "premium" ? "text-emerald-700 dark:text-[#2DD4BF]" : "text-slate-500 dark:text-[#94A3B8]"}`}>
-                    Artisan Premium (P75)
-                  </span>
-                  <span className="text-base font-bold">
-                    {sym}{quartiles.upperMarketRange.toFixed(2)}
-                  </span>
-                </div>
-                <p className={`text-xs mt-1.5 leading-relaxed ${activeTier === "premium" ? "text-slate-700 dark:text-[#E2E8F0]" : "text-slate-500 dark:text-[#94A3B8]"}`}>
-                  High-margin tier for bespoke personalization, luxury unboxing, or rare materials.
-                </p>
-              </div>
-              <div className="pt-2 border-t border-slate-200 dark:border-[#263244] text-xs font-medium">
-                <span className={activeTier === "premium" ? "text-emerald-700 dark:text-[#2DD4BF] font-semibold" : "text-slate-400 dark:text-[#64748B]"}>
-                  {activeTier === "premium" ? "✓ Selected" : "Use Premium Tier"}
-                </span>
-              </div>
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Pricing, Shipping & Cost Inputs Panel */}
-      <div className="bg-slate-50 dark:bg-[#131C29] border border-slate-200 dark:border-[#263244] rounded-[14px] p-5 space-y-5">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-200 dark:border-[#263244] pb-3">
-          <div className="flex items-center gap-2">
-            <Calculator className="w-4 h-4 text-emerald-600 dark:text-[#14B8A6]" />
-            <span className="text-sm font-bold text-slate-800 dark:text-[#F8FAFC]">
-              Etsy Listing Revenue &amp; Seller Cost Inputs
-            </span>
-          </div>
-          <span className="text-[11px] text-slate-500 dark:text-[#94A3B8]">
-            Etsy fee formulas updated June 2026 ({regionConfig.countryName})
-          </span>
-        </div>
-
-        {/* 4 Input Controls: Retail Price, Shipping Charged, COGS, Shipping Cost */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* 1. Retail Price */}
-          <div className="bg-white dark:bg-[#0F1621] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC]">
-                Item Retail Price
-              </label>
-              <div className="flex items-center gap-1">
-                <button
-                  type="button"
-                  onClick={() => adjustPrice(-1)}
-                  className="w-5 h-5 flex items-center justify-center text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 rounded transition cursor-pointer"
-                  title="Decrease $1"
-                >
-                  -
-                </button>
-                <button
-                  type="button"
-                  onClick={() => adjustPrice(1)}
-                  className="w-5 h-5 flex items-center justify-center text-xs font-bold text-emerald-700 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/50 rounded transition cursor-pointer"
-                  title="Increase $1"
-                >
-                  +
-                </button>
-              </div>
-            </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 dark:text-slate-500">
-                {sym}
-              </span>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                value={targetPrice}
-                onChange={(e) => {
-                  setActiveTier("custom");
-                  setTargetPrice(Math.max(0, parseFloat(e.target.value) || 0));
-                }}
-                className="w-full h-9 bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-[#263244] rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 dark:text-[#F8FAFC] focus:border-emerald-500 dark:focus:border-[#14B8A6] outline-none transition"
-              />
-            </div>
-            <p className="text-[10px] text-slate-500 dark:text-[#64748B]">Product listing price</p>
-          </div>
-
-          {/* 2. Shipping Charged to Buyer */}
-          <div className="bg-white dark:bg-[#0F1621] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC]">
-                Shipping Charged (Buyer)
-              </label>
-              {numShippingCharged > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setShippingChargedInput("0.00")}
-                  className="text-[10px] font-semibold text-emerald-600 dark:text-[#14B8A6] hover:underline cursor-pointer"
-                >
-                  Free Shipping
-                </button>
-              )}
-            </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 dark:text-[#64748B]">
-                {sym}
-              </span>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                value={shippingChargedInput}
-                onChange={(e) => setShippingChargedInput(e.target.value)}
-                placeholder="0.00 (Free Shipping)"
-                className="w-full h-9 bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-[#263244] rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 dark:text-[#F8FAFC] focus:border-emerald-500 dark:focus:border-[#14B8A6] outline-none transition placeholder:text-slate-400 dark:placeholder:text-[#64748B]"
-              />
-            </div>
-            <p className="text-[10px] text-slate-500 dark:text-[#64748B]">
-              Etsy takes 6.5% transaction + processing on this too
-            </p>
-          </div>
-
-          {/* 3. Cost of Goods Sold (COGS) */}
-          <div className="bg-white dark:bg-[#0F1621] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC]">
-                Materials &amp; Labor (COGS)
-              </label>
-              {feeDetails.hasCogs && (
-                <span className="text-[10px] font-bold text-emerald-600 dark:text-[#14B8A6]">✓ Set</span>
-              )}
-            </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 dark:text-[#64748B]">
-                {sym}
-              </span>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                value={cogsInput}
-                onChange={(e) => setCogsInput(e.target.value)}
-                placeholder="e.g. 8.50"
-                className="w-full h-9 bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-[#263244] rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 dark:text-[#F8FAFC] focus:border-emerald-500 dark:focus:border-[#14B8A6] outline-none transition placeholder:text-slate-400 dark:placeholder:text-[#64748B]"
-              />
-            </div>
-            <p className="text-[10px] text-slate-500 dark:text-[#64748B]">Raw materials &amp; packaging</p>
-          </div>
-
-          {/* 4. Seller Actual Shipping Cost (Postage) */}
-          <div className="bg-white dark:bg-[#0F1621] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-2 shadow-2xs">
-            <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC]">
-                Actual Postage Cost (Seller)
-              </label>
-              <Truck className="w-3.5 h-3.5 text-slate-400 dark:text-[#64748B]" />
-            </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 dark:text-[#64748B]">
-                {sym}
-              </span>
-              <input
-                type="number"
-                step="0.5"
-                min="0"
-                value={shippingCostInput}
-                onChange={(e) => setShippingCostInput(e.target.value)}
-                placeholder="0.00"
-                className="w-full h-9 bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-[#263244] rounded-md pl-7 pr-3 text-xs font-mono font-bold text-slate-900 dark:text-[#F8FAFC] focus:border-emerald-500 dark:focus:border-[#14B8A6] outline-none transition placeholder:text-slate-400 dark:placeholder:text-[#64748B]"
-              />
-            </div>
-            <p className="text-[10px] text-slate-500 dark:text-[#64748B]">Courier label cost paid by you</p>
-          </div>
-        </div>
-
-        {/* Advanced Fee Toggles (Offsite Ads & Etsy Ads) */}
-        <div className="pt-2 border-t border-slate-200 dark:border-[#263244]">
-          <div className="flex items-center justify-between">
-            <button
-              type="button"
-              onClick={() => setShowAdvancedFees(!showAdvancedFees)}
-              className="flex items-center gap-1.5 text-xs font-semibold text-slate-600 dark:text-[#94A3B8] hover:text-slate-900 dark:hover:text-[#F8FAFC] cursor-pointer transition"
-            >
-              <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-600 dark:text-[#14B8A6]" />
-              <span>Advertising &amp; Additional Commission Controls</span>
-              <span className="text-[11px] text-slate-500 dark:text-[#64748B]">
-                ({offsiteAdsTier === "none" ? "Offsite Ads: None" : offsiteAdsTier === "under10k" ? "Offsite Ads: 15%" : "Offsite Ads: 12%"} • {showAdvancedFees ? "Hide" : "Customize"})
-              </span>
-            </button>
-
-            <span className="text-[11px] text-slate-600 dark:text-[#94A3B8] font-mono">
-              Total Buyer Pays: <strong className="text-slate-900 dark:text-[#F8FAFC]">{sym}{feeDetails.totalBuyerPays.toFixed(2)}</strong>
-            </span>
-          </div>
-
-          {showAdvancedFees && (
-            <div className="mt-3.5 grid grid-cols-1 sm:grid-cols-2 gap-4 bg-white dark:bg-[#0F1621] p-4 rounded-lg border border-slate-200 dark:border-[#263244]">
-              {/* Offsite Ads Tier */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC] block">
-                  Etsy Offsite Ads Fee
-                </label>
+          {/* Group 3: Fees & ads */}
+          <fieldset className="fc-group">
+            <legend>Fees &amp; ads</legend>
+            <label className="fc-field">
+              <span className="fc-label">Seller country</span>
+              <span className="fc-select">
                 <select
-                  value={offsiteAdsTier}
-                  onChange={(e) => setOffsiteAdsTier(e.target.value as OffsiteAdsTier)}
-                  className="w-full h-9 px-3 bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-[#263244] rounded-lg text-xs font-semibold text-slate-900 dark:text-[#F8FAFC] outline-none focus:border-emerald-500 dark:focus:border-[#14B8A6] transition"
+                  value={country}
+                  onChange={(e) => setCountry(e.target.value)}
+                  aria-label="Seller country"
                 >
-                  <option value="none">0% — Opted Out / Direct Organic Sale</option>
-                  <option value="under10k">15% — Standard Tier (Shop sales &lt; $10k/yr, optional)</option>
-                  <option value="over10k">12% — High-Volume Tier (Shop sales &gt; $10k/yr, mandatory)</option>
+                  {Object.entries(COUNTRIES).map(([code, item]) => (
+                    <option key={code} value={code}>
+                      {item.label}
+                    </option>
+                  ))}
                 </select>
-                <p className="text-[10px] text-slate-500 dark:text-[#64748B]">
-                  Offsite Ads fee is capped at $100 per attributed order.
-                </p>
-              </div>
+              </span>
+            </label>
+            <label className="fc-field">
+              <span className="fc-label">Advertising</span>
+              <span className="fc-select">
+                <select
+                  value={advertising}
+                  onChange={(e) => setAdvertising(e.target.value as "none" | "offsite")}
+                  aria-label="Advertising"
+                >
+                  <option value="none">None</option>
+                  <option value="offsite">Offsite Ads (15%)</option>
+                </select>
+              </span>
+            </label>
+          </fieldset>
+        </div>
 
-              {/* Onsite Etsy Ads Spend */}
-              <div className="space-y-1.5">
-                <label className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC] block">
-                  Etsy Onsite Ads Spend per Sale
-                </label>
-                <div className="relative">
-                  <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-mono font-bold text-slate-400 dark:text-[#64748B]">
-                    {sym}
-                  </span>
-                  <input
-                    type="number"
-                    step="0.25"
-                    min="0"
-                    value={etsyAdsInput}
-                    onChange={(e) => setEtsyAdsInput(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full h-9 bg-slate-50 dark:bg-[#111827] border border-slate-300 dark:border-[#263244] rounded-lg pl-7 pr-3 text-xs font-mono font-bold text-slate-900 dark:text-[#F8FAFC] focus:border-emerald-500 dark:focus:border-[#14B8A6] outline-none transition placeholder:text-slate-400 dark:placeholder:text-[#64748B]"
+        {/* Right Summary Card */}
+        <div className="fc-card fc-summary">
+          {/* Top: Donut Chart & Legend */}
+          <div className="fc-top">
+            <div
+              className="fc-donut"
+              role="img"
+              aria-label={`Net profit ${formatMoney(calc.netProfit)} of ${formatMoney(calc.revenue.total)} revenue`}
+            >
+              <svg viewBox="0 0 100 100">
+                <circle className="fc-donut-track" cx="50" cy="50" r="42" />
+                {segments.map((s) => (
+                  <circle
+                    key={s.key}
+                    cx="50"
+                    cy="50"
+                    r="42"
+                    stroke={s.color}
+                    strokeDasharray={`${s.dash} ${CIRCUMFERENCE - s.dash}`}
+                    strokeDashoffset={s.offset}
                   />
-                </div>
-                <p className="text-[10px] text-slate-500 dark:text-[#64748B]">
-                  Estimated promoted listings CPC budget per unit sold.
-                </p>
+                ))}
+              </svg>
+              <div className="fc-donut-center">
+                <span className="fc-donut-k">Net profit</span>
+                <b className={`num ${isLoss ? "loss" : ""}`}>{formatMoney(calc.netProfit)}</b>
+                <span className={`fc-donut-m ${isLoss ? "loss" : ""}`}>
+                  {(calc.margin * 100).toFixed(1)}% margin
+                </span>
               </div>
             </div>
-          )}
-        </div>
 
-        {/* Reverse Target Margin Helper Card */}
-        <div className="bg-emerald-50/70 dark:bg-[#14B8A6]/10 border border-emerald-200 dark:border-[#14B8A6]/30 rounded-lg p-4 space-y-3">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-            <div className="flex items-center gap-2">
-              <Sparkles className="w-4 h-4 text-emerald-600 dark:text-[#14B8A6]" />
-              <span className="text-xs font-bold text-emerald-800 dark:text-[#14B8A6] uppercase tracking-wider">
-                Target Margin Reverse Pricing Tool
-              </span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              {[35, 45, 50, 60].map((pct) => (
-                <button
-                  key={pct}
-                  type="button"
-                  onClick={() => setTargetMarginInput(pct)}
-                  className={`px-2.5 py-0.5 rounded text-[11px] font-bold transition cursor-pointer ${
-                    targetMarginInput === pct
-                      ? "bg-emerald-600 text-white dark:bg-[#14B8A6] dark:text-[#021A17]"
-                      : "bg-white dark:bg-[#131C29] text-slate-700 dark:text-[#94A3B8] border border-slate-200 dark:border-[#263244] hover:bg-slate-100 dark:hover:bg-[#172231] hover:text-slate-900 dark:hover:text-[#F8FAFC]"
-                  }`}
-                >
-                  {pct}%
-                </button>
-              ))}
-            </div>
+            <ul className="fc-legend">
+              <li>
+                <span className="fc-dot" style={{ background: "var(--eb-green)" }} aria-hidden="true" />
+                Net profit
+                <b className="num">{formatMoney(calc.netProfit)}</b>
+              </li>
+              <li>
+                <span className="fc-dot" style={{ background: "var(--eb-accent)" }} aria-hidden="true" />
+                Etsy fees
+                <b className="num">{formatMoney(calc.fees.total)}</b>
+              </li>
+              <li>
+                <span className="fc-dot" style={{ background: "var(--eb-brand)" }} aria-hidden="true" />
+                Cost of goods
+                <b className="num">{formatMoney(calc.costs.cogs)}</b>
+              </li>
+              <li>
+                <span className="fc-dot" style={{ background: "var(--eb-brand-2)" }} aria-hidden="true" />
+                Shipping cost
+                <b className="num">{formatMoney(calc.costs.shipping)}</b>
+              </li>
+            </ul>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-            <div>
-              {reverseSuggestedPrice !== null ? (
-                <p className="text-slate-600 dark:text-[#94A3B8] text-xs">
-                  To achieve your desired <strong className="text-emerald-700 dark:text-[#14B8A6] font-bold">{targetMarginInput}% profit margin</strong> after all Etsy fees and shipping, list at:
-                </p>
-              ) : (
-                <p className="text-slate-600 dark:text-[#64748B] text-xs">
-                  Enter your <strong className="text-slate-900 dark:text-[#F8FAFC]">Materials Cost (COGS)</strong> in the field above to calculate the exact retail price needed for a {targetMarginInput}% net margin.
-                </p>
-              )}
-            </div>
-
-            {reverseSuggestedPrice !== null && (
-              <div className="flex items-center gap-2">
-                <span className="font-heading text-lg font-bold text-slate-900 dark:text-[#F8FAFC]">
-                  {sym}{reverseSuggestedPrice.toFixed(2)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setActiveTier("custom");
-                    setTargetPrice(reverseSuggestedPrice);
-                  }}
-                  className="px-3 py-1 bg-emerald-600 hover:bg-emerald-700 text-white dark:bg-[#14B8A6] dark:hover:bg-[#2DD4BF] dark:text-[#021A17] rounded-md text-xs font-bold transition shadow-xs cursor-pointer"
-                >
-                  Apply Suggested Price
-                </button>
+          {/* 3-Column Breakdown */}
+          <div className="fc-breakdown">
+            <div className="fc-col">
+              <h3>Revenue</h3>
+              <div className="fc-row">
+                <span>Sales</span>
+                <span className="num">{formatMoney(calc.revenue.sales)}</span>
               </div>
-            )}
-          </div>
-        </div>
-
-        {/* 4 Official Etsy Fee Breakdown Cards */}
-        <div className="space-y-2">
-          <div className="flex items-center justify-between">
-            <span className="text-xs font-bold text-slate-500 dark:text-[#94A3B8] uppercase tracking-wider">
-              Exact Fee Deductions ({regionConfig.countryName})
-            </span>
-            <span className="text-[11px] font-mono font-bold text-slate-800 dark:text-[#F8FAFC]">
-              Total Order: {sym}{feeDetails.totalBuyerPays.toFixed(2)}
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {/* 1. Listing Fee */}
-            <div className="bg-white dark:bg-[#131C29] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-1 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 dark:text-[#64748B] block">Listing Fee</span>
-              <span className="font-mono font-bold text-slate-900 dark:text-[#F8FAFC] text-base">
-                {sym}{feeDetails.listingFee.toFixed(2)}
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-[#64748B] block">Per 4-mo renewal or sale</span>
-            </div>
-
-            {/* 2. Transaction Fee */}
-            <div className="bg-white dark:bg-[#131C29] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-1 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 dark:text-[#64748B] block">Transaction (6.5%)</span>
-              <span className="font-mono font-bold text-slate-900 dark:text-[#F8FAFC] text-base">
-                {sym}{feeDetails.transactionFee.toFixed(2)}
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-[#64748B] block">Item + shipping commission</span>
-            </div>
-
-            {/* 3. Payment Processing Fee */}
-            <div className="bg-white dark:bg-[#131C29] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-1 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 dark:text-[#64748B] block">
-                Processing ({(regionConfig.paymentPercent * 100).toFixed(0)}% + {sym}{regionConfig.paymentFixed.toFixed(2)})
-              </span>
-              <span className="font-mono font-bold text-slate-900 dark:text-[#F8FAFC] text-base">
-                {sym}{feeDetails.paymentFee.toFixed(2)}
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-[#64748B] block">Etsy Payments gateway</span>
-            </div>
-
-            {/* 4. Ads & Additional Fees */}
-            <div className="bg-white dark:bg-[#131C29] p-3.5 rounded-lg border border-slate-200 dark:border-[#263244] space-y-1 shadow-2xs">
-              <span className="text-xs font-medium text-slate-500 dark:text-[#64748B] block">
-                Ads &amp; Regulatory
-              </span>
-              <span className="font-mono font-bold text-slate-900 dark:text-[#F8FAFC] text-base">
-                {sym}{(feeDetails.offsiteAdsFee + feeDetails.etsyAdsSpend + feeDetails.regulatoryOperatingFee).toFixed(2)}
-              </span>
-              <span className="text-[10px] text-slate-500 dark:text-[#64748B] block">
-                {feeDetails.offsiteAdsTier !== "none" ? `Offsite ${feeDetails.offsiteAdsTier === "under10k" ? "15%" : "12%"}` : "0% Offsite Ads"}
-                {feeDetails.regulatoryOperatingFee > 0 ? ` • Reg ${(regionConfig.regulatoryOperatingPercent! * 100).toFixed(2)}%` : ""}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* Total Etsy Cut Banner */}
-        <div className="flex items-center justify-between bg-white dark:bg-[#111827] border border-slate-200 dark:border-[#263244] text-slate-800 dark:text-[#F8FAFC] px-4 py-3 rounded-lg text-xs shadow-2xs">
-          <div className="flex items-center gap-2">
-            <span className="font-semibold uppercase tracking-wider text-slate-600 dark:text-[#94A3B8]">
-              Total Etsy Commission &amp; Fees:
-            </span>
-            <span className="font-mono font-bold text-base text-rose-600 dark:text-[#14B8A6]">
-              -{sym}{feeDetails.totalFees.toFixed(2)}
-            </span>
-          </div>
-          <span className="text-[11px] font-semibold text-slate-600 dark:text-[#94A3B8]">
-            {feeDetails.effectiveFeePercent}% of total buyer payment
-          </span>
-        </div>
-
-        {/* Take-Home Net Payout & Profit Summary */}
-        <div className="p-5 rounded-xl bg-white dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-6">
-          {/* Left: Etsy Net Payout */}
-          <div className="space-y-1.5">
-            <span className="text-xs font-bold text-slate-500 dark:text-[#64748B] uppercase tracking-wider">
-              Etsy Net Bank Deposit
-            </span>
-            <div className="font-heading text-2xl sm:text-3xl font-bold text-slate-900 dark:text-[#F8FAFC]">
-              {sym}{feeDetails.netPayout.toFixed(2)}
-            </div>
-            <p className="text-xs text-slate-600 dark:text-[#94A3B8] leading-relaxed max-w-sm">
-              Deposited into your bank account after all Etsy commission and payment fees are deducted.
-            </p>
-          </div>
-
-          {/* Right: Seller Net Take-Home Profit */}
-          <div className="md:border-l md:border-slate-200 dark:md:border-[#263244] md:pl-6 space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-bold text-slate-800 dark:text-[#F8FAFC] uppercase tracking-wider">
-                Seller Net Take-Home Profit
-              </span>
-              {feeDetails.hasCogs && feeDetails.profitMarginPercent !== null && (
-                <span
-                  className={`px-2 py-0.5 rounded text-[11px] font-mono font-bold border ${
-                    feeDetails.marginHealth === "healthy"
-                      ? "bg-emerald-50 dark:bg-[#14B8A6]/20 text-emerald-700 dark:text-[#14B8A6] border-emerald-200 dark:border-[#14B8A6]/40"
-                      : feeDetails.marginHealth === "moderate"
-                      ? "bg-blue-50 dark:bg-blue-500/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-500/40"
-                      : feeDetails.marginHealth === "tight"
-                      ? "bg-amber-50 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-500/40"
-                      : "bg-rose-50 dark:bg-red-500/20 text-rose-700 dark:text-red-400 border-rose-200 dark:border-red-500/40"
-                  }`}
-                >
-                  {feeDetails.profitMarginPercent}% Margin ({feeDetails.marginHealth.toUpperCase()})
+              <div className="fc-row">
+                <span>Shipping</span>
+                <span className="num">{formatMoney(calc.revenue.shipping)}</span>
+              </div>
+              <div className="fc-row">
+                <span>Discount</span>
+                <span className="num">
+                  {calc.revenue.discount > 0 ? `-${formatMoney(calc.revenue.discount)}` : "$0.00"}
                 </span>
-              )}
+              </div>
+              <div className="fc-row fc-total">
+                <span>Total revenue</span>
+                <span className="num">{formatMoney(calc.revenue.total)}</span>
+              </div>
             </div>
 
-            <div className="font-heading text-2xl sm:text-3xl font-bold text-emerald-600 dark:text-[#14B8A6]">
-              {feeDetails.hasCogs && feeDetails.netProfit !== null
-                ? `${sym}${feeDetails.netProfit.toFixed(2)}`
-                : "Enter COGS"}
+            <div className="fc-col">
+              <h3>Etsy fees</h3>
+              <div className="fc-row">
+                <span>Listing fee</span>
+                <span className="num">{formatMoney(calc.fees.listing)}</span>
+              </div>
+              <div className="fc-row">
+                <span>Transaction (6.5%)</span>
+                <span className="num">{formatMoney(calc.fees.transaction)}</span>
+              </div>
+              <div className="fc-row">
+                <span>Payment processing</span>
+                <span className="num">{formatMoney(calc.fees.processing)}</span>
+              </div>
+              <div className="fc-row">
+                <span>Offsite Ads</span>
+                <span className="num">{formatMoney(calc.fees.advertising)}</span>
+              </div>
+              <div className="fc-row fc-total">
+                <span>Total fees</span>
+                <span className="num">{formatMoney(calc.fees.total)}</span>
+              </div>
             </div>
 
-            <div className="text-xs text-slate-600 dark:text-[#94A3B8]">
-              {feeDetails.hasCogs && feeDetails.netProfit !== null ? (
-                <div className="space-y-1">
-                  <div>
-                    <span>At 25 sales/month: </span>
-                    <strong className="text-slate-900 dark:text-[#F8FAFC] font-mono">
-                      +{sym}{(feeDetails.netProfit * 25).toFixed(2)} net profit
-                    </strong>
-                  </div>
-                  <div className="w-48 h-1.5 bg-slate-100 dark:bg-[#111827] rounded-full overflow-hidden mt-1 border border-slate-200 dark:border-[#263244]">
-                    <div
-                      className={`h-full transition-all duration-300 rounded-full ${
-                        feeDetails.marginHealth === "healthy"
-                          ? "bg-emerald-500 dark:bg-[#14B8A6]"
-                          : feeDetails.marginHealth === "moderate"
-                          ? "bg-blue-500"
-                          : feeDetails.marginHealth === "tight"
-                          ? "bg-amber-500"
-                          : "bg-red-500"
-                      }`}
-                      style={{ width: `${Math.min(100, Math.max(5, feeDetails.profitMarginPercent || 0))}%` }}
-                    />
-                  </div>
-                </div>
-              ) : (
-                <span>Requires production/materials cost in the field above to calculate true take-home profit.</span>
-              )}
+            <div className="fc-col">
+              <h3>Your costs</h3>
+              <div className="fc-row">
+                <span>Cost of goods</span>
+                <span className="num">{formatMoney(calc.costs.cogs)}</span>
+              </div>
+              <div className="fc-row">
+                <span>Shipping cost</span>
+                <span className="num">{formatMoney(calc.costs.shipping)}</span>
+              </div>
+              <div className="fc-row fc-total">
+                <span>Total costs</span>
+                <span className="num">{formatMoney(calc.costs.total)}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* 4 Bottom Stat Cards */}
+          <div className="fc-stats">
+            <div className="fc-stat">
+              <span>Total revenue</span>
+              <b className="num">{formatMoney(calc.revenue.total)}</b>
+            </div>
+            <div className="fc-stat">
+              <span>Fees + costs</span>
+              <b className="num">{formatMoney(calc.fees.total + calc.costs.total)}</b>
+            </div>
+            <div className="fc-stat">
+              <span>Net profit</span>
+              <b className={`num ${isLoss ? "loss" : ""}`}>{formatMoney(calc.netProfit)}</b>
+            </div>
+            <div className="fc-stat">
+              <span>Profit margin</span>
+              <b className={`num ${isLoss ? "loss" : ""}`}>{(calc.margin * 100).toFixed(1)}%</b>
             </div>
           </div>
         </div>

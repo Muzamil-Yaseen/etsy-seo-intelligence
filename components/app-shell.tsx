@@ -287,21 +287,7 @@ export function AppShell({
                 {!sidebarCollapsed && <span className="truncate">Media Downloader</span>}
               </button>
 
-              {/* a) Bulk Listing Downloader */}
-              {!sidebarCollapsed && (
-                <button
-                  type="button"
-                  onClick={() => handleTabClick("downloader")}
-                  className={`w-full h-8 pl-8 pr-3 rounded-lg text-[11px] font-medium flex items-center gap-2 transition cursor-pointer text-left ${
-                    currentTab === "downloader"
-                      ? "text-emerald-700 dark:text-emerald-400 font-semibold"
-                      : "text-slate-500 dark:text-[#94A3B8] hover:text-emerald-600 dark:hover:text-emerald-400 hover:bg-slate-50 dark:hover:bg-white/[0.02]"
-                  }`}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${currentTab === "downloader" ? "bg-emerald-600 dark:bg-emerald-400" : "bg-emerald-400 dark:bg-emerald-500"}`} />
-                  <span className="truncate">Bulk Listing Downloader</span>
-                </button>
-              )}
+
             </div>
 
             {/* HISTORY Section */}
@@ -461,20 +447,7 @@ export function AppShell({
 
           {/* Center/Right: Quick Search, Bell, Theme Toggle Switch, and Actions */}
           <div className="flex items-center gap-3">
-            {/* Quick Search Shortcut Display (Corelystic Style) */}
-            <div className="hidden lg:flex items-center gap-2 px-3 py-1.5 rounded-xl bg-slate-50 dark:bg-[#111827] border border-slate-200 dark:border-[#263244] text-xs text-slate-400">
-              <Search className="w-3.5 h-3.5 text-slate-400" />
-              <span>Search niche or URL...</span>
-              <kbd className="px-1.5 py-0.5 rounded bg-white dark:bg-[#1F2937] border border-slate-200 dark:border-[#374151] text-[10px] font-mono text-slate-500">
-                ⌘ + F
-              </kbd>
-            </div>
 
-            {/* Groq Live Status */}
-            <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 dark:bg-[#0F1621] border border-slate-200 dark:border-[#263244] text-[11px] text-slate-600 dark:text-[#94A3B8]">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
-              <span>AI Grounded</span>
-            </div>
 
             {/* Custom Sun/Moon Switch Toggle Provided by User */}
             <ThemeToggle />
