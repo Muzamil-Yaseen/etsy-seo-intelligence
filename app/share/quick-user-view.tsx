@@ -29,9 +29,14 @@ import {
   RefreshCw,
   AlertTriangle,
   Sparkles,
-  Plus,
   ShieldAlert,
+  ArrowLeft,
 } from "lucide-react";
+import {
+  downloadSingleListingZip,
+  downloadMultipleListingsZip,
+  ListingDownloadInput,
+} from "@/lib/media/download-listing-assets";
 import { AccessGate, lockApp } from "@/components/access-gate";
 import {
   HistoryDrawer,
@@ -223,6 +228,61 @@ export function QuickUserView() {
     setDownloaderInitialData(null);
     setCurrentTab("competitors");
     setActiveTab("competitors");
+  };
+
+  // Download progress states
+  const [isDownloadingAll, setIsDownloadingAll] = useState(false);
+  const [downloadAllStatus, setDownloadAllStatus] = useState("");
+  const [downloadingCardId, setDownloadingCardId] = useState<string | number | null>(null);
+
+  // Download All Competitors ZIP (Images, Videos, Tags, Title & Description in folder of images, text, and JSON)
+  const handleDownloadAllCompetitors = async () => {
+    const listToDownload: ListingDownloadInput[] =
+      results?.competitorsAnalyzed && results.competitorsAnalyzed.length > 0
+        ? results.competitorsAnalyzed
+        : (manualListings.filter((l): l is ListingDownloaderData => Boolean(l)) as ListingDownloadInput[]);
+
+    if (listToDownload.length === 0) {
+      handleOpenDownloader(null);
+      return;
+    }
+
+    setIsDownloadingAll(true);
+    setDownloadAllStatus(`Packaging ${listToDownload.length} listings...`);
+
+    try {
+      const nicheSlug = (searchQuery || "competitor-listings")
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, "-")
+        .slice(0, 30);
+      const filename = `etsy-${nicheSlug}-${listToDownload.length}-listings-assets.zip`;
+
+      await downloadMultipleListingsZip(listToDownload, filename, (status) => {
+        setDownloadAllStatus(status);
+      });
+    } catch (err: any) {
+      console.error("Failed downloading all competitors:", err);
+      alert(`Could not download listings: ${err?.message || "Unknown error"}`);
+    } finally {
+      setIsDownloadingAll(false);
+      setDownloadAllStatus("");
+    }
+  };
+
+  // Download Single Competitor ZIP (Images, Videos, Tags, Title & Description in folder of images, text, and JSON)
+  const handleDownloadSingleCompetitor = async (comp: any) => {
+    const cardKey = comp.listingId || comp.title;
+    setDownloadingCardId(cardKey);
+
+    try {
+      await downloadSingleListingZip(comp);
+    } catch (err: any) {
+      console.error("Failed downloading single competitor:", err);
+      alert(`Could not download listing: ${err?.message || "Unknown error"}`);
+    } finally {
+      setDownloadingCardId(null);
+    }
   };
 
   // Open Downloader for any listing
@@ -835,40 +895,55 @@ export function QuickUserView() {
               }}
             />
           ) : currentTab === "downloader" ? (
-            <ListingDownloaderView
-              initialData={downloaderInitialData}
-              competitors={manualListings}
-              onToggleCompetitor={handleToggleCompetitor}
-              onRunAnalysisWithCompetitors={() => {
-                setShowManualUrls(true);
-                const firstComp = manualListings.find(Boolean);
-                const queryToUse =
-                  searchQuery.trim() ||
-                  firstComp?.tags?.[0] ||
-                  firstComp?.title?.split(/[,|\-–—]/)[0]?.trim() ||
-                  "etsy product";
-                if (!searchQuery.trim()) {
-                  setSearchQuery(queryToUse);
-                }
-                setCurrentTab("competitors");
-                handleAnalyze(undefined, queryToUse);
-              }}
-              onUpdateListing={(updated) => {
-                setDownloaderInitialData(updated);
-                const matchedIdx = manualUrls.findIndex(
-                  (u, i) =>
-                    (updated.url && u && u.includes(updated.url)) ||
-                    (updated.listingId && manualListings[i]?.listingId === updated.listingId)
-                );
-                if (matchedIdx !== -1) {
-                  setManualListings((prev) => {
-                    const copy = [...prev];
-                    copy[matchedIdx] = updated;
-                    return copy;
-                  });
-                }
-              }}
-            />
+            <div className="space-y-3">
+              {/* Top Back Navigation Button (matching user screenshot 2) */}
+              <div className="flex items-center justify-between">
+                <button
+                  type="button"
+                  onClick={() => setCurrentTab("competitors")}
+                  className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border border-slate-200 dark:border-[#263244] bg-white dark:bg-[#0F1621] text-xs font-bold text-slate-700 dark:text-[#F8FAFC] hover:bg-slate-50 dark:hover:bg-white/[0.04] transition cursor-pointer shadow-2xs group"
+                >
+                  <ArrowLeft className="w-4 h-4 text-slate-500 dark:text-[#94A3B8] group-hover:-translate-x-0.5 transition-transform" />
+                  <span>Back to Competitors</span>
+                </button>
+              </div>
+
+              <ListingDownloaderView
+                onBack={() => setCurrentTab("competitors")}
+                initialData={downloaderInitialData}
+                competitors={manualListings}
+                onToggleCompetitor={handleToggleCompetitor}
+                onRunAnalysisWithCompetitors={() => {
+                  setShowManualUrls(true);
+                  const firstComp = manualListings.find(Boolean);
+                  const queryToUse =
+                    searchQuery.trim() ||
+                    firstComp?.tags?.[0] ||
+                    firstComp?.title?.split(/[,|\-–—]/)[0]?.trim() ||
+                    "etsy product";
+                  if (!searchQuery.trim()) {
+                    setSearchQuery(queryToUse);
+                  }
+                  setCurrentTab("competitors");
+                  handleAnalyze(undefined, queryToUse);
+                }}
+                onUpdateListing={(updated) => {
+                  setDownloaderInitialData(updated);
+                  const matchedIdx = manualUrls.findIndex(
+                    (u, i) =>
+                      (updated.url && u && u.includes(updated.url)) ||
+                      (updated.listingId && manualListings[i]?.listingId === updated.listingId)
+                  );
+                  if (matchedIdx !== -1) {
+                    setManualListings((prev) => {
+                      const copy = [...prev];
+                      copy[matchedIdx] = updated;
+                      return copy;
+                    });
+                  }
+                }}
+              />
+            </div>
           ) : currentTab === "pricing" ? (
             <div className="bg-white dark:bg-[#0B1019] border border-slate-200 dark:border-[#263244] rounded-2xl p-6 shadow-xs">
               <PricingCalculator
@@ -1797,11 +1872,22 @@ export function QuickUserView() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <button
                         type="button"
-                        onClick={() => handleOpenDownloader(null)}
-                        className="text-xs font-semibold text-white bg-black border border-black hover:bg-zinc-800 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                        onClick={handleDownloadAllCompetitors}
+                        disabled={isDownloadingAll}
+                        className="text-xs font-semibold text-white bg-black border border-black hover:bg-zinc-800 disabled:opacity-75 rounded-lg px-2.5 py-1.5 flex items-center gap-1.5 transition shadow-2xs cursor-pointer"
+                        title="Download all listings: Images, Videos, Tags, Title & Description in folder of images, text, and JSON format"
                       >
-                        <Download className="w-3.5 h-3.5 text-white" />
-                        <span>Listing Downloader</span>
+                        {isDownloadingAll ? (
+                          <>
+                            <RefreshCw className="w-3.5 h-3.5 text-white animate-spin" />
+                            <span>{downloadAllStatus || "Downloading all..."}</span>
+                          </>
+                        ) : (
+                          <>
+                            <Download className="w-3.5 h-3.5 text-white" />
+                            <span>Listing Downloader</span>
+                          </>
+                        )}
                       </button>
                       <button
                         type="button"
@@ -1918,25 +2004,22 @@ export function QuickUserView() {
                               </span>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  handleOpenDownloader({
-                                    listingId: comp.listingId,
-                                    title: comp.title,
-                                    price: comp.price,
-                                    currency: comp.currency,
-                                    shopName: comp.shopName,
-                                    url: comp.url,
-                                    imageUrl: comp.imageUrl,
-                                    images: comp.images,
-                                    tags: comp.tags,
-                                    description: comp.description,
-                                  })
-                                }
-                                className="text-[11px] text-emerald-700 hover:text-emerald-800 font-semibold inline-flex items-center gap-0.5 cursor-pointer"
-                                title="Open Listing Downloader"
+                                onClick={() => handleDownloadSingleCompetitor(comp)}
+                                disabled={downloadingCardId === (comp.listingId || comp.title)}
+                                className="text-[11px] text-emerald-700 hover:text-emerald-800 font-semibold inline-flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                title="Download this listing: Images, Videos, Tags, Title & Description in folder of images, text, and JSON format"
                               >
-                                <Download className="w-3 h-3" />
-                                <span>Download</span>
+                                {downloadingCardId === (comp.listingId || comp.title) ? (
+                                  <>
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <span>Downloading...</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Download className="w-3 h-3" />
+                                    <span>Download</span>
+                                  </>
+                                )}
                               </button>
                             </div>
 

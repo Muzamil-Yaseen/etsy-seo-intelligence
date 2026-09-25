@@ -25,9 +25,15 @@ import {
   Puzzle,
   Users,
   Video,
+  ArrowLeft,
 } from "lucide-react";
 import JSZip from "jszip";
 import { ETSY_BOOKMARKLET_CODE, ETSY_CONSOLE_SNIPPET } from "@/lib/bookmarklet";
+import {
+  formatTagsText,
+  formatListingText,
+  packageListingIntoFolder,
+} from "@/lib/media/download-listing-assets";
 
 export interface ListingDownloaderData {
   listingId?: string | number | null;
@@ -61,6 +67,7 @@ export interface ListingDownloaderData {
 export interface ListingDownloaderModalProps {
   isOpen?: boolean;
   onClose?: () => void;
+  onBack?: () => void;
   isPage?: boolean;
   initialData?: ListingDownloaderData | null;
   onUpdateListing?: (updated: ListingDownloaderData) => void;
@@ -112,6 +119,7 @@ async function fetchMediaBlob(url: string): Promise<Blob> {
 export function ListingDownloaderModal({
   isOpen = false,
   onClose,
+  onBack,
   isPage = false,
   initialData,
   onUpdateListing,
@@ -545,43 +553,96 @@ export function ListingDownloaderModal({
 
     try {
       const zip = new JSZip();
-      const folderName = `etsy-${listing?.listingId || "listing"}-hd-assets`;
+      const folderName = `etsy-${listing?.listingId || "listing"}-assets`;
       const mediaFolder = zip.folder(folderName);
+      const imagesFolder = mediaFolder?.folder("images");
+      const videosFolder = normalizedVideos.length > 0 ? mediaFolder?.folder("videos") : null;
       let savedCount = 0;
 
-      // 1. Download all HD photos
+      // 1. Download all HD photos into images/ folder
       for (let i = 0; i < normalizedImages.length; i++) {
         setZipProgress(`Fetching photo ${i + 1} of ${normalizedImages.length}...`);
         const url = normalizedImages[i];
         try {
           const blob = await fetchMediaBlob(url);
-          mediaFolder?.file(`photo-${String(i + 1).padStart(2, "0")}.jpg`, blob);
+          imagesFolder?.file(`photo-${String(i + 1).padStart(2, "0")}.jpg`, blob);
           savedCount++;
         } catch (e) {
           console.warn(`Could not include image ${i + 1}:`, e);
         }
       }
 
-      // 2. Download any listing videos
+      // 2. Download any listing videos into videos/ folder
       for (let j = 0; j < normalizedVideos.length; j++) {
         setZipProgress(`Fetching video ${j + 1} of ${normalizedVideos.length}...`);
         const v = normalizedVideos[j];
         try {
           const blob = await fetchMediaBlob(v.url);
-          mediaFolder?.file(`video-${String(j + 1).padStart(2, "0")}.mp4`, blob);
+          videosFolder?.file(`video-${String(j + 1).padStart(2, "0")}.mp4`, blob);
           savedCount++;
         } catch (e) {
           console.warn(`Could not include video ${j + 1}:`, e);
         }
       }
 
-      if (savedCount === 0) {
+      // 3. Add tags.txt (13 Tags)
+      if (listing?.tags && listing.tags.length > 0) {
+        mediaFolder?.file("tags.txt", formatTagsText(listing.tags, listing.title || undefined));
+      }
+
+      // 4. Add title-description.txt (Title & Description)
+      if (listing) {
+        mediaFolder?.file(
+          "title-description.txt",
+          formatListingText({
+            listingId: listing.listingId || undefined,
+            title: listing.title || undefined,
+            description: listing.description || undefined,
+            price: listing.price || undefined,
+            currency: listing.currency || "USD",
+            shopName: listing.shopName || undefined,
+            url: listing.url || undefined,
+            tags: listing.tags || undefined,
+            materials: listing.materials || undefined,
+          })
+        );
+      }
+
+      // 5. Add listing.json (JSON format)
+      if (listing) {
+        mediaFolder?.file(
+          "listing.json",
+          JSON.stringify(
+            {
+              listingId: listing.listingId || null,
+              title: listing.title || "",
+              price: listing.price || null,
+              currency: listing.currency || "USD",
+              shopName: listing.shopName || "",
+              url: listing.url || "",
+              tagsCount: listing.tags?.length || 0,
+              tags: listing.tags || [],
+              materials: listing.materials || [],
+              description: listing.description || "",
+              imagesCount: savedCount,
+              images: normalizedImages,
+              videosCount: normalizedVideos.length,
+              videos: normalizedVideos.map((v) => v.url),
+              exportedAt: new Date().toISOString(),
+            },
+            null,
+            2
+          )
+        );
+      }
+
+      if (savedCount === 0 && !listing?.title) {
         throw new Error(
           "Could not download any media assets. Please check your network connection or try downloading files individually."
         );
       }
 
-      setZipProgress(`Packaging ${savedCount} asset${savedCount === 1 ? "" : "s"} into ZIP...`);
+      setZipProgress(`Packaging assets into ZIP...`);
       const zipBlob = await zip.generateAsync({ type: "blob" });
       const blobUrl = URL.createObjectURL(zipBlob);
       const a = document.createElement("a");
@@ -753,38 +814,24 @@ export function ListingDownloaderModal({
 
     try {
       const zip = new JSZip();
-      let totalPhotos = 0;
 
       for (let b = 0; b < bulkListings.length; b++) {
         const item = bulkListings[b];
-        const cleanShop = (item.shopName || "etsy").replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 15);
-        const folderName = `item-${b + 1}-${item.listingId || "listing"}-${cleanShop}`;
+        const cleanTitle = (item.title || `item-${b + 1}`).replace(/[^a-zA-Z0-9_-]/g, "-").slice(0, 25);
+        const folderName = `Listing-${b + 1}-${item.listingId || "id"}-${cleanTitle}`;
         const subFolder = zip.folder(folderName);
 
-        const imgs: string[] = [];
-        if (Array.isArray(item.images)) {
-          for (const raw of item.images) {
-            if (typeof raw === "string") imgs.push(toFullResolutionUrl(raw));
-            else if (raw && typeof raw === "object") imgs.push(toFullResolutionUrl(raw.fullUrl || raw.url));
-          }
-        }
-        if (item.imageUrl && !imgs.includes(toFullResolutionUrl(item.imageUrl))) {
-          imgs.unshift(toFullResolutionUrl(item.imageUrl));
-        }
-
-        for (let p = 0; p < imgs.length; p++) {
-          setBulkFetchProgress(`Item ${b + 1}/${bulkListings.length}: Photo ${p + 1}/${imgs.length}...`);
-          try {
-            const blob = await fetchMediaBlob(imgs[p]);
-            subFolder?.file(`photo-${String(p + 1).padStart(2, "0")}.jpg`, blob);
-            totalPhotos++;
-          } catch {
-            // continue
-          }
+        if (subFolder) {
+          await packageListingIntoFolder(
+            subFolder,
+            item,
+            `Item ${b + 1}/${bulkListings.length}: `,
+            (msg) => setBulkFetchProgress(msg)
+          );
         }
       }
 
-      setBulkFetchProgress(`Compressing ${totalPhotos} HD photos into ZIP...`);
+      setBulkFetchProgress(`Compressing ${bulkListings.length} listings into ZIP...`);
       const blob = await zip.generateAsync({ type: "blob" });
       const blobUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -837,6 +884,17 @@ export function ListingDownloaderModal({
       {/* Header */}
       <div className="px-5 py-4 border-b border-slate-200 dark:border-[#263244] flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#0F1621]">
         <div className="flex items-center gap-3">
+          {onBack && (
+            <button
+              type="button"
+              onClick={onBack}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-[#263244] bg-slate-50 hover:bg-slate-100 dark:bg-[#111827] dark:hover:bg-[#1F2937] text-xs font-bold text-slate-700 dark:text-[#F8FAFC] transition shadow-2xs cursor-pointer group shrink-0"
+              title="Back to Competitors"
+            >
+              <ArrowLeft className="w-4 h-4 text-slate-500 dark:text-[#94A3B8] group-hover:-translate-x-0.5 transition-transform" />
+              <span>Back</span>
+            </button>
+          )}
           <div className="w-9 h-9 rounded-xl bg-emerald-50 dark:bg-[#14B8A6]/20 border border-emerald-200 dark:border-[#14B8A6]/30 text-emerald-600 dark:text-[#14B8A6] flex items-center justify-center shadow-xs shrink-0">
             <Download className="w-4 h-4" />
           </div>
