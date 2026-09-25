@@ -4,6 +4,14 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Etsy Intelligence • SEO & Competitor Intelligence Platform",
   description: "Professional Etsy SEO research, competitor intelligence, listing optimization, and market analytics platform.",
+  icons: {
+    icon: [
+      { url: "/logo-icon.png", type: "image/png" },
+      { url: "/favicon.ico" },
+    ],
+    shortcut: "/logo-icon.png",
+    apple: "/logo-icon.png",
+  },
 };
 
 export default function RootLayout({
@@ -14,6 +22,9 @@ export default function RootLayout({
   return (
     <html lang="en" className="h-full">
       <head>
+        <link rel="icon" href="/logo-icon.png" type="image/png" />
+        <link rel="shortcut icon" href="/logo-icon.png" />
+        <link rel="apple-touch-icon" href="/logo-icon.png" />
         <script
           dangerouslySetInnerHTML={{
             __html: `

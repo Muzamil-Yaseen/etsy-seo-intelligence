@@ -354,12 +354,18 @@ export function AppShell({
                 <PanelLeft className="w-4 h-4" />
               </button>
               <div
-                className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-xs ${
-                  isAdmin ? "bg-emerald-600 text-white" : "bg-slate-700 text-white"
-                }`}
+                className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-200 dark:border-[#263244] shadow-xs bg-slate-100 dark:bg-slate-800"
                 title={isAdmin ? "Muzamil (Owner)" : "Etsy Seller"}
               >
-                {isAdmin ? "M" : "E"}
+                <Image
+                  src="/profile.jpg"
+                  alt={isAdmin ? "Muzamil" : "Etsy Seller"}
+                  fill
+                  sizes="32px"
+                  className="object-cover object-top"
+                  priority
+                  unoptimized
+                />
               </div>
               <button
                 type="button"
@@ -374,12 +380,16 @@ export function AppShell({
           ) : (
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div
-                  className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs shrink-0 shadow-xs ${
-                    isAdmin ? "bg-emerald-600 text-white" : "bg-slate-700 text-white"
-                  }`}
-                >
-                  {isAdmin ? "M" : "E"}
+                <div className="relative w-8 h-8 rounded-full overflow-hidden shrink-0 border border-slate-200 dark:border-[#263244] shadow-xs bg-slate-100 dark:bg-slate-800">
+                  <Image
+                    src="/profile.jpg"
+                    alt={isAdmin ? "Muzamil" : "Etsy Seller"}
+                    fill
+                    sizes="32px"
+                    className="object-cover object-top"
+                    priority
+                    unoptimized
+                  />
                 </div>
                 <div className="flex flex-col min-w-0">
                   <span className="text-xs font-bold text-slate-900 dark:text-[#F8FAFC] leading-none truncate">
@@ -586,7 +596,19 @@ export function AppShell({
             </div>
 
             <div className="pt-3 border-t border-slate-200 dark:border-[#263244] flex items-center justify-between text-xs text-slate-600 dark:text-[#94A3B8]">
-              <span>{isAdmin ? "Muzamil · Owner (Full Control)" : "Etsy Seller · Active Member"}</span>
+              <div className="flex items-center gap-2">
+                <div className="relative w-6 h-6 rounded-full overflow-hidden shrink-0 border border-slate-200 dark:border-[#263244]">
+                  <Image
+                    src="/profile.jpg"
+                    alt={isAdmin ? "Muzamil" : "Etsy Seller"}
+                    fill
+                    sizes="24px"
+                    className="object-cover object-top"
+                    unoptimized
+                  />
+                </div>
+                <span>{isAdmin ? "Muzamil · Owner" : "Etsy Seller · Active"}</span>
+              </div>
               <button
                 type="button"
                 onClick={() => lockApp()}
